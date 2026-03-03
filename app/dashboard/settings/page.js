@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import ReactCrop from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { getConfig, updateConfig, getUser, hasAnyRole } from '@/lib/api';
 import { IconPlus, IconX, IconGear, IconInfo } from '@/lib/icons';
 
@@ -13,8 +15,14 @@ export default function SettingsPage() {
     const [newType, setNewType] = useState('');
     const [companyName, setCompanyName] = useState('');
     const [logoBase64, setLogoBase64] = useState('');
-    const [logoDarkBase64, setLogoDarkBase64] = useState('');
     const [faviconBase64, setFaviconBase64] = useState('');
+
+    // --- Crop State ---
+    const [cropImageSrc, setCropImageSrc] = useState(null);
+    const [cropType, setCropType] = useState(null); // 'logo' | 'favicon'
+    const [crop, setCrop] = useState();
+    const [completedCrop, setCompletedCrop] = useState(null);
+    const imgRef = React.useRef(null);
 
     const loadConfig = useCallback(async () => {
         setLoading(true);
@@ -23,7 +31,6 @@ export default function SettingsPage() {
             setConfig(res.data);
             setCompanyName(res.data.company_name || 'PopOut Studios');
             setLogoBase64(res.data.logo_base64 || '');
-            setLogoDarkBase64(res.data.logo_dark_base64 || '');
             setFaviconBase64(res.data.favicon_base64 || '');
         }
         setLoading(false);
@@ -59,25 +66,50 @@ export default function SettingsPage() {
         }
 
         const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64Data = reader.result;
-            setSaving(true);
-            setMessage({ type: '', text: '' });
-
-            const res = await updateConfig(isDark ? { logo_dark_base64: base64Data } : { logo_base64: base64Data });
-            if (res.success) {
-                setMessage({ type: 'success', text: `${isDark ? 'Dark ' : ''}Logo uploaded successfully` });
-                if (isDark) {
-                    setLogoDarkBase64(base64Data);
-                } else {
-                    setLogoBase64(base64Data);
-                }
-            } else {
-                setMessage({ type: 'error', text: res.error });
-            }
-            setSaving(false);
-        };
+        reader.addEventListener('load', () => setCropImageSrc(reader.result?.toString() || ''));
         reader.readAsDataURL(file);
+    }
+
+    // --- Crop Action Handlers ---
+    async function handleCropComplete() {
+        if (!completedCrop || !imgRef.current) return;
+        const canvas = document.createElement('canvas');
+        const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
+        const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
+        canvas.width = completedCrop.width;
+        canvas.height = completedCrop.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(
+            imgRef.current,
+            completedCrop.x * scaleX,
+            completedCrop.y * scaleY,
+            completedCrop.width * scaleX,
+            completedCrop.height * scaleY,
+            0,
+            0,
+            completedCrop.width,
+            completedCrop.height
+        );
+        const base64Data = canvas.toDataURL('image/png');
+        setCropImageSrc(null); // Close modal 
+
+        setSaving(true);
+        setMessage({ type: '', text: '' });
+
+        if (cropType === 'logo') {
+            const res = await updateConfig({ logo_base64: base64Data, logo_dark_base64: base64Data }); // Set both
+            if (res.success) {
+                setMessage({ type: 'success', text: 'Logo uploaded successfully' });
+                setLogoBase64(base64Data);
+            } else setMessage({ type: 'error', text: res.error });
+        } else {
+            const res = await updateConfig({ favicon_base64: base64Data });
+            if (res.success) {
+                setMessage({ type: 'success', text: 'System Favicon uploaded successfully' });
+                setFaviconBase64(base64Data);
+            } else setMessage({ type: 'error', text: res.error });
+        }
+        setSaving(false);
     }
 
     async function handleFaviconUpload(e) {
@@ -90,20 +122,7 @@ export default function SettingsPage() {
         }
 
         const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64Data = reader.result;
-            setSaving(true);
-            setMessage({ type: '', text: '' });
-
-            const res = await updateConfig({ favicon_base64: base64Data });
-            if (res.success) {
-                setMessage({ type: 'success', text: 'System Favicon uploaded successfully' });
-                setFaviconBase64(base64Data);
-            } else {
-                setMessage({ type: 'error', text: res.error });
-            }
-            setSaving(false);
-        };
+        reader.addEventListener('load', () => setCropImageSrc(reader.result?.toString() || ''));
         reader.readAsDataURL(file);
     }
 
@@ -186,9 +205,9 @@ export default function SettingsPage() {
                 </p>
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xl)' }}>
-                    {/* Light Logo */}
+                    {/* Unified Logo */}
                     <div style={{ flex: '1 1 300px' }}>
-                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Standard/Light Logo</h4>
+                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Global Company Logo</h4>
                         <div style={{
                             border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
                             display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
@@ -200,42 +219,14 @@ export default function SettingsPage() {
                                 flexShrink: 0, boxShadow: 'var(--shadow-sm)'
                             }}>
                                 {logoBase64 ? (
-                                    <img src={logoBase64} alt="Light Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                                    <img src={logoBase64} alt="Brand Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} />
                                 ) : (
                                     <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>None</span>
                                 )}
                             </div>
                             <div style={{ flex: 1 }}>
-                                <input type="file" id="logo-light-upload" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleLogoUpload(e, false)} disabled={saving} />
-                                <label htmlFor="logo-light-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer' }}>
-                                    {saving ? 'Uploading...' : 'Choose Image'}
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Dark Logo */}
-                    <div style={{ flex: '1 1 300px' }}>
-                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Dark Mode Logo</h4>
-                        <div style={{
-                            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
-                            display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
-                            background: '#0f172a'
-                        }}>
-                            <div style={{
-                                width: '64px', height: '64px', background: '#1e293b', borderRadius: '8px',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                                flexShrink: 0, boxShadow: 'var(--shadow-sm)'
-                            }}>
-                                {logoDarkBase64 ? (
-                                    <img src={logoDarkBase64} alt="Dark Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} />
-                                ) : (
-                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>None</span>
-                                )}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <input type="file" id="logo-dark-upload" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleLogoUpload(e, true)} disabled={saving} />
-                                <label htmlFor="logo-dark-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer', color: '#f1f5f9' }}>
+                                <input type="file" id="logo-upload" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleLogoUpload(e, false)} disabled={saving} />
+                                <label htmlFor="logo-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer' }}>
                                     {saving ? 'Uploading...' : 'Choose Image'}
                                 </label>
                             </div>
@@ -272,43 +263,7 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            {/* Job Types */}
-            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
-                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Job Types</h3>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
-                    Manage the types of print jobs available in the system. These appear in the New Job form.
-                </p>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
-                    {(config?.job_types || []).map(type => (
-                        <span key={type} className="badge badge-progress" style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            padding: '6px 14px', fontSize: '0.8125rem', cursor: 'default'
-                        }}>
-                            {type.replace(/_/g, ' ')}
-                            <button
-                                onClick={() => handleRemoveType(type)}
-                                style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'inherit', padding: 0, display: 'flex', opacity: 0.7
-                                }}
-                                title="Remove type"
-                            >
-                                <IconX size={14} />
-                            </button>
-                        </span>
-                    ))}
-                </div>
-
-                <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                    <input type="text" className="form-input" value={newType}
-                        onChange={e => setNewType(e.target.value)} placeholder="e.g. Large Format"
-                        onKeyPress={e => e.key === 'Enter' && handleAddType()} style={{ flex: 1 }} />
-                    <button className="btn btn-primary" onClick={handleAddType} disabled={saving || !newType.trim()} style={{ gap: '4px' }}>
-                        <IconPlus size={16} /> Add
-                    </button>
-                </div>
-            </div>
 
             {/* Currency */}
             <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
@@ -325,11 +280,11 @@ export default function SettingsPage() {
             </div>
 
             {/* System Info */}
-            <div className="card">
-                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <details className="card" style={{ cursor: 'pointer' }}>
+                <summary className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
                     <IconInfo size={16} /> System Information
-                </h3>
-                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+                </summary>
+                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: 'var(--space-lg)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px' }}>
                         <span style={{ fontWeight: 600 }}>Platform:</span><span>PrintFlow MVP</span>
                         <span style={{ fontWeight: 600 }}>Backend:</span><span>Google Apps Script</span>
@@ -339,7 +294,38 @@ export default function SettingsPage() {
                         <span style={{ fontWeight: 600 }}>Developed By:</span><span>ICUNI Labs</span>
                     </div>
                 </div>
-            </div>
+            </details>
+
+            {/* React Image Crop Modal overlay */}
+            {cropImageSrc && (
+                <div className="modal-overlay">
+                    <div className="modal modal-content" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
+                        <div className="modal-header">
+                            <h2>Crop {cropType === 'logo' ? 'Logo' : 'Favicon'}</h2>
+                            <button className="btn-icon" onClick={() => setCropImageSrc(null)}><IconX size={20} /></button>
+                        </div>
+                        <div className="modal-body" style={{ flex: 1, overflow: 'auto', background: '#000', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', justifyContent: 'center' }}>
+                            <ReactCrop
+                                crop={crop}
+                                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                                onComplete={(c) => setCompletedCrop(c)}
+                                aspect={cropType === 'favicon' ? 1 : undefined}
+                            >
+                                <img
+                                    ref={imgRef}
+                                    src={cropImageSrc}
+                                    alt="Crop target"
+                                    style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
+                                />
+                            </ReactCrop>
+                        </div>
+                        <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button className="btn btn-secondary" onClick={() => setCropImageSrc(null)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleCropComplete}>Apply Crop</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

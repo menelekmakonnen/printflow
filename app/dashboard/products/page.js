@@ -11,16 +11,15 @@ export default function ProductsPage() {
     const [loading, setLoading] = useState(true);
     const [user, setUserState] = useState(null);
     const [showModal, setShowModal] = useState(false);
-    const [editingItem, setEditingItem] = useState(null);
-    const [formLoading, setFormLoading] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
+    const [filterType, setFilterType] = useState('All');
 
     // Quote Cart State
     const [quoteItems, setQuoteItems] = useState([]);
 
     const loadProducts = useCallback(async () => {
         setLoading(true);
-        const res = await getProducts('Active');
+        const res = await getProducts();
         if (res.success) {
             setItems(res.data);
         }
@@ -102,8 +101,19 @@ export default function ProductsPage() {
 
     const canEdit = hasAnyRole(['admin', 'super_admin']);
 
+    // Filter items based on selected tab
+    const filteredItems = items.filter(item => {
+        if (filterType === 'Products') {
+            return String(item.product_type || '').toLowerCase() === 'goods';
+        }
+        if (filterType === 'Services') {
+            return String(item.product_type || '').toLowerCase() === 'service';
+        }
+        return true;
+    });
+
     return (
-        <div style={{ display: 'flex', gap: 'var(--space-lg)', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', alignItems: 'stretch' }}>
             {/* Main Products List */}
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xl)' }}>
@@ -111,6 +121,24 @@ export default function ProductsPage() {
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Products & Services</h2>
                         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Browse standard pricing and build quotes</p>
                     </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-md)' }}>
+                    {['All', 'Products', 'Services'].map(type => (
+                        <button
+                            key={type}
+                            className={`btn ${filterType === type ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{
+                                padding: '6px 16px',
+                                border: filterType === type ? 'none' : '1px solid var(--color-border)',
+                                borderRadius: '20px',
+                                fontSize: '0.875rem'
+                            }}
+                            onClick={() => setFilterType(type)}
+                        >
+                            {type}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -126,13 +154,13 @@ export default function ProductsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.length === 0 ? (
+                                {filteredItems.length === 0 ? (
                                     <tr>
                                         <td colSpan={canEdit ? 5 : 4} style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-muted)' }}>
-                                            No products found. (Run backend setup script if missing).
+                                            No products found matching your filter.
                                         </td>
                                     </tr>
-                                ) : items.map(item => (
+                                ) : filteredItems.map(item => (
                                     <tr key={item.item_id}>
                                         <td>
                                             <div style={{ fontWeight: 500 }}>{item.item_name}</div>
@@ -179,7 +207,7 @@ export default function ProductsPage() {
             </div>
 
             {/* Right Sidebar: Quote Calculator */}
-            <div style={{ width: '350px', flexShrink: 0, position: 'sticky', top: '24px' }}>
+            <div style={{ flex: '1 1 350px', maxWidth: '100%', position: 'sticky', top: '24px' }}>
                 <div className="card" style={{ padding: 'var(--space-lg)' }}>
                     <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: 'var(--space-md)' }}>Quote Summary</h3>
 

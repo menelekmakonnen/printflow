@@ -15,22 +15,31 @@ export default function NewJobPage() {
         client_name: '',
         client_email: '',
         client_phone: '',
-        client_phone: '',
         job_description: '',
         requires_design: false,
+        provides_files: false,
         requires_delivery: false,
-        delivery_fee: 0
+        delivery_fee: 0,
+        delivery_address: '',
+        delivery_notes: ''
     });
 
     const [files, setFiles] = useState([]);
 
-    // Line items: { productId, name, rate, quantity, discount, unit }
+    // Line items: { productId, name, rate, quantity, discount, discountType, cost, costType, unit }
     const [lineItems, setLineItems] = useState([]);
+
+    // Global modifications
     const [globalDiscount, setGlobalDiscount] = useState(0);
+    const [globalDiscountType, setGlobalDiscountType] = useState('cedi'); // 'cedi' or 'percent'
+    const [globalCost, setGlobalCost] = useState(0);
+    const [globalCostType, setGlobalCostType] = useState('cedi'); // 'cedi' or 'percent'
+
     const [estTaxRate, setEstTaxRate] = useState(0);
 
     const [productGroups, setProductGroups] = useState({});
     const [showProductPicker, setShowProductPicker] = useState(false);
+    const [showCustomItemPicker, setShowCustomItemPicker] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
     // Load Initial Data
@@ -100,6 +109,33 @@ export default function NewJobPage() {
         loadInitialData();
     }, []);
 
+
+
+
+    // Calculations
+    const lineItemsWithTotals = lineItems.map(item => {
+        const itemBase = Number(item.rate || 0) * Number(item.quantity || 1);
+        const itemCost = item.costType === 'percent' ? itemBase * (Number(item.cost || 0) / 100) : Number(item.cost || 0);
+        const designCost = item.design_service ? Number(item.design_cost || 0) : 0;
+        const baseWithCost = itemBase + itemCost + designCost;
+        const itemDiscount = item.discountType === 'percent' ? baseWithCost * (Number(item.discount || 0) / 100) : Number(item.discount || 0);
+        const itemTotal = Math.max(0, baseWithCost - itemDiscount);
+        return { ...item, itemBase, itemCost, designCost, itemDiscount, itemTotal };
+    });
+
+    const subtotal = lineItemsWithTotals.reduce((sum, item) => sum + item.itemTotal, 0);
+
+    const calculatedGlobalCost = globalCostType === 'percent' ? subtotal * (Number(globalCost || 0) / 100) : Number(globalCost || 0);
+    const subtotalWithGlobalCost = subtotal + calculatedGlobalCost;
+
+    const calculatedGlobalDiscount = globalDiscountType === 'percent' ? subtotalWithGlobalCost * (Number(globalDiscount || 0) / 100) : Number(globalDiscount || 0);
+    const afterGlobalDiscount = Math.max(0, subtotalWithGlobalCost - calculatedGlobalDiscount);
+
+    const taxAmount = afterGlobalDiscount * (Number(estTaxRate || 0) / 100);
+    const deliveryDelta = (form.requires_delivery && form.delivery_fee) ? Number(form.delivery_fee) : 0;
+
+    const finalTotal = afterGlobalDiscount + taxAmount + deliveryDelta;
+
     // Save Draft to LocalStorage
     useEffect(() => {
         if (!loading && (lineItems.length > 0 || form.client_name)) {
@@ -107,18 +143,34 @@ export default function NewJobPage() {
                 form,
                 lineItems,
                 globalDiscount,
-                estTaxRate
+                globalDiscountType,
+                globalCost,
+                globalCostType,
+                estTaxRate,
+                subtotal,
+                finalTotal
             }));
         }
-    }, [form, lineItems, globalDiscount, estTaxRate, loading]);
+    }, [form, lineItems, globalDiscount, globalDiscountType, globalCost, globalCostType, estTaxRate, loading, subtotal, finalTotal]);
+    function addCustomItem(name, rate, qty = 1, discount = 0, discountType = 'cedi') {
+        const newItem = {
+            productId: 'CUSTOM-' + Math.random().toString(36).substr(2, 9),
+            name: name,
+            rate: Number(rate),
+            quantity: qty,
+            cost: 0,
+            costType: 'cedi',
+            discount: discount,
+            discountType: discountType,
+            design_service: false,
+            design_cost: 0,
+            unit: 'unit'
+        };
+        setLineItems([...lineItems, newItem]);
+        setShowCustomItemPicker(false);
+    }
 
 
-    // Calculations
-    const subtotal = lineItems.reduce((sum, item) => sum + ((item.rate * item.quantity) - (Number(item.discount) || 0)), 0);
-    const afterGlobalDiscount = Math.max(0, subtotal - (Number(globalDiscount) || 0));
-    const taxAmount = afterGlobalDiscount * (Number(estTaxRate) / 100);
-    const deliveryDelta = (form.requires_delivery && form.delivery_fee) ? Number(form.delivery_fee) : 0;
-    const finalTotal = afterGlobalDiscount + taxAmount + deliveryDelta;
 
     function addProduct(product) {
         const existing = lineItems.findIndex(li => li.productId === product.id);
@@ -133,6 +185,11 @@ export default function NewJobPage() {
                 rate: product.rate,
                 quantity: 1,
                 discount: 0,
+                discountType: 'cedi',
+                cost: 0,
+                costType: 'cedi',
+                design_service: false,
+                design_cost: 0,
                 unit: product.unit || 'pcs'
             }]);
         }
@@ -146,6 +203,14 @@ export default function NewJobPage() {
             updated[index].quantity = Math.max(1, parseInt(value) || 1);
         } else if (field === 'discount') {
             updated[index].discount = Math.max(0, parseFloat(value) || 0);
+        } else if (field === 'cost') {
+            updated[index].cost = Math.max(0, parseFloat(value) || 0);
+        } else if (field === 'design_cost') {
+            updated[index].design_cost = Math.max(0, parseFloat(value) || 0);
+        } else if (field === 'design_service') {
+            updated[index].design_service = value;
+        } else if (field === 'discountType' || field === 'costType') {
+            updated[index][field] = value;
         }
         setLineItems(updated);
     }
@@ -179,16 +244,26 @@ export default function NewJobPage() {
         const jobType = lineItems.map(li => li.name).join(', ');
 
         let detailedDescription = '--- QUOTE BREAKDOWN ---\n';
-        lineItems.forEach(li => {
+        lineItemsWithTotals.forEach(li => {
             detailedDescription += `${li.quantity}x ${li.name} @ \u20B5${li.rate.toFixed(2)}`;
-            if (li.discount > 0) detailedDescription += ` (Discount: -\u20B5${Number(li.discount).toFixed(2)})`;
-            detailedDescription += ` = \u20B5${((li.rate * li.quantity) - li.discount).toFixed(2)}\n`;
+            if (li.itemCost > 0) detailedDescription += ` (Cost: +\u20B5${li.itemCost.toFixed(2)})`;
+            if (li.designCost > 0) detailedDescription += ` (Design: +\u20B5${li.designCost.toFixed(2)})`;
+            if (li.itemDiscount > 0) detailedDescription += ` (Discount: -\u20B5${li.itemDiscount.toFixed(2)})`;
+            detailedDescription += ` = \u20B5${li.itemTotal.toFixed(2)}\n`;
         });
 
-        if (globalDiscount > 0) {
-            detailedDescription += `\nSubtotal: \u20B5${subtotal.toFixed(2)}`;
-            detailedDescription += `\nGlobal Discount: -\u20B5${Number(globalDiscount).toFixed(2)}`;
-            detailedDescription += `\nAfter Discount: \u20B5${afterGlobalDiscount.toFixed(2)}`;
+        detailedDescription += `\nRaw Subtotal: \u20B5${subtotal.toFixed(2)}`;
+
+        if (calculatedGlobalCost > 0) {
+            detailedDescription += `\nGlobal Additional Cost: +\u20B5${calculatedGlobalCost.toFixed(2)}`;
+        }
+
+        if (calculatedGlobalDiscount > 0) {
+            detailedDescription += `\nGlobal Discount: -\u20B5${calculatedGlobalDiscount.toFixed(2)}`;
+        }
+
+        if (calculatedGlobalCost > 0 || calculatedGlobalDiscount > 0) {
+            detailedDescription += `\nAfter Global Adjustments: \u20B5${afterGlobalDiscount.toFixed(2)}`;
         }
 
         if (estTaxRate > 0) {
@@ -197,6 +272,12 @@ export default function NewJobPage() {
 
         if (form.requires_delivery && form.delivery_fee > 0) {
             detailedDescription += `\nDelivery Fee: \u20B5${Number(form.delivery_fee).toFixed(2)}`;
+            if (form.delivery_address) {
+                detailedDescription += `\nDelivery Address: ${form.delivery_address}`;
+            }
+            if (form.delivery_notes) {
+                detailedDescription += `\nDelivery Notes: ${form.delivery_notes}`;
+            }
         }
 
         detailedDescription += `\n\nFINAL TOTAL: \u20B5${finalTotal.toFixed(2)}`;
@@ -215,6 +296,7 @@ export default function NewJobPage() {
             requires_design: form.requires_design,
             requires_delivery: form.requires_delivery,
             delivery_fee: form.requires_delivery ? Number(form.delivery_fee) : 0,
+            delivery_address: form.requires_delivery ? form.delivery_address : '',
             delivery_status: form.requires_delivery ? 'pending' : 'none',
             tax_percentage: estTaxRate, // pass tax rate to back-end for email mapping
             items: lineItems // pass line items to back-end for invoice generation
@@ -333,14 +415,24 @@ export default function NewJobPage() {
                     <div style={{ marginBottom: 'var(--space-xl)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
                             <h3 className="card-title">Products / Services</h3>
-                            <button
-                                type="button"
-                                className="btn btn-primary"
-                                onClick={() => setShowProductPicker(true)}
-                                style={{ gap: '4px', fontSize: '0.8125rem' }}
-                            >
-                                <IconPlusCircle size={16} /> Add Item
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowCustomItemPicker(true)}
+                                    style={{ gap: '4px', fontSize: '0.8125rem' }}
+                                >
+                                    <IconPlusCircle size={16} /> Custom Item
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={() => setShowProductPicker(true)}
+                                    style={{ gap: '4px', fontSize: '0.8125rem' }}
+                                >
+                                    <IconPlusCircle size={16} /> Browse Products
+                                </button>
+                            </div>
                         </div>
 
                         {lineItems.length === 0 ? (
@@ -349,9 +441,14 @@ export default function NewJobPage() {
                                 padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--color-text-muted)'
                             }}>
                                 <p style={{ marginBottom: 'var(--space-sm)' }}>No items added yet</p>
-                                <button type="button" className="btn btn-ghost" onClick={() => setShowProductPicker(true)} style={{ gap: '4px' }}>
-                                    <IconPlusCircle size={16} /> Browse Products
-                                </button>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                                    <button type="button" className="btn btn-ghost" onClick={() => setShowProductPicker(true)} style={{ gap: '4px' }}>
+                                        <IconPlusCircle size={16} /> Browse Products
+                                    </button>
+                                    <button type="button" className="btn btn-ghost" onClick={() => setShowCustomItemPicker(true)} style={{ gap: '4px', color: 'var(--color-primary)' }}>
+                                        + Add Custom Item
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -379,14 +476,42 @@ export default function NewJobPage() {
                                             </button>
                                         </div>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Disc: {'\u20B5'}</span>
-                                            <input type="number" value={item.discount} min="0" step="0.01" onChange={e => updateItemField(i, 'discount', e.target.value)}
-                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', width: '32px' }}>Cost</span>
+                                                <input type="number" value={item.cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'cost', e.target.value)}
+                                                    style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                                <select value={item.costType || 'cedi'} onChange={e => updateItemField(i, 'costType', e.target.value)}
+                                                    style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px' }}>
+                                                    <option value="cedi">{'\u20B5'}</option>
+                                                    <option value="percent">%</option>
+                                                </select>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', width: '32px' }}>Disc</span>
+                                                <input type="number" value={item.discount || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'discount', e.target.value)}
+                                                    style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                                <select value={item.discountType || 'cedi'} onChange={e => updateItemField(i, 'discountType', e.target.value)}
+                                                    style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px' }}>
+                                                    <option value="cedi">{'\u20B5'}</option>
+                                                    <option value="percent">%</option>
+                                                </select>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '4px' }}>
+                                                    <input type="checkbox" checked={item.design_service} onChange={e => updateItemField(i, 'design_service', e.target.checked)} style={{ cursor: 'pointer' }} />
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>+Design</span>
+                                                </label>
+                                                {item.design_service && (
+                                                    <input type="number" value={item.design_cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
+                                                        style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', marginLeft: '4px' }}
+                                                        placeholder="Cost" />
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div style={{ fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'right' }}>
-                                            {'\u20B5'}{((item.rate * item.quantity) - item.discount).toFixed(2)}
+                                            {'\u20B5'}{(lineItemsWithTotals[i]?.itemTotal || 0).toFixed(2)}
                                         </div>
 
                                         <button type="button" onClick={() => removeItem(i)}
@@ -396,41 +521,7 @@ export default function NewJobPage() {
                                     </div>
                                 ))}
 
-                                {/* Order Totals Section */}
-                                <div style={{
-                                    marginTop: 'var(--space-md)', padding: 'var(--space-md) var(--space-lg)',
-                                    background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)',
-                                    border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '8px'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                        <span style={{ color: 'var(--color-text-muted)' }}>Subtotal:</span>
-                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>{'\u20B5'}{subtotal.toFixed(2)}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                        <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            Overall Discount: {'\u20B5'}
-                                            <input type="number" value={globalDiscount} min="0" step="0.01" onChange={e => setGlobalDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                                                style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                        </span>
-                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-pending)' }}>
-                                            -{'\u20B5'}{Number(globalDiscount).toFixed(2)}
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                        <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            Est. Tax: %
-                                            <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
-                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                        </span>
-                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
-                                            {'\u20B5'}{taxAmount.toFixed(2)}
-                                        </span>
-                                    </div>
-                                    <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                        <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
-                                        <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>
-                                    </div>
-                                </div>
+
                             </div>
                         )}
                     </div>
@@ -470,24 +561,64 @@ export default function NewJobPage() {
                         </div>
 
                         {form.requires_delivery && (
-                            <div className="form-group" style={{ marginBottom: 'var(--space-md)' }}>
-                                <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Delivery Fee ({'\u20B5'})</label>
-                                <input type="number" step="0.01" className="form-input" required={form.requires_delivery} style={{ maxWidth: '200px' }}
-                                    value={form.delivery_fee} onChange={e => setForm(f => ({ ...f, delivery_fee: e.target.value }))}
-                                    placeholder="Enter delivery cost..." />
-                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>This fee will be added to the invoice total and logged as a Courier Expense automatically.</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Delivery Fee ({'\u20B5'})</label>
+                                    <input type="number" step="0.01" className="form-input" required={form.requires_delivery} style={{ maxWidth: '200px' }}
+                                        value={form.delivery_fee} onChange={e => setForm(f => ({ ...f, delivery_fee: e.target.value }))}
+                                        placeholder="Enter delivery cost..." />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label" style={{ fontWeight: 600 }}>Delivery Address *</label>
+                                    <textarea className="form-input" rows={2} required={form.requires_delivery}
+                                        value={form.delivery_address} onChange={e => setForm(f => ({ ...f, delivery_address: e.target.value }))}
+                                        placeholder="Enter complete delivery address..." />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label" style={{ fontWeight: 600 }}>Delivery Notes (Optional)</label>
+                                    <textarea className="form-input" rows={2}
+                                        value={form.delivery_notes} onChange={e => setForm(f => ({ ...f, delivery_notes: e.target.value }))}
+                                        placeholder="Any special instructions for the courier?" />
+                                </div>
                             </div>
                         )}
 
-                        {!form.requires_design && (
-                            <div style={{ marginTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-md)' }}>
-                                <h4 style={{ fontSize: '0.9rem', marginBottom: '12px' }}>Client Files</h4>
+                    </div>
+
+
+
+                    {/* CLIENT FILES */}
+                    <div style={{
+                        marginBottom: 'var(--space-xl)', padding: 'var(--space-xl)',
+                        background: form.provides_files ? '#f0fdf4' : 'var(--color-bg-secondary)',
+                        border: form.provides_files ? '2px solid #22c55e' : '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-lg)', transition: 'all var(--transition-normal)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <h3 className="card-title" style={{ margin: 0, color: form.provides_files ? '#166534' : 'var(--color-text-primary)' }}>Client Files</h3>
+                                <p style={{ fontSize: '0.875rem', color: form.provides_files ? '#15803d' : 'var(--color-text-muted)', margin: 0 }}>Is the client providing assets or files?</p>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={form.provides_files}
+                                    onChange={e => setForm(f => ({ ...f, provides_files: e.target.checked }))}
+                                    style={{ width: '24px', height: '24px', marginRight: '12px', cursor: 'pointer', accentColor: '#22c55e' }}
+                                />
+                                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: form.provides_files ? '#166534' : 'var(--color-text-primary)' }}>Yes, Have Files</span>
+                            </label>
+                        </div>
+
+                        {form.provides_files && (
+                            <div style={{ marginTop: 'var(--space-lg)', borderTop: `1px solid ${form.provides_files ? '#bbf7d0' : 'var(--color-border)'}`, paddingTop: 'var(--space-lg)' }}>
+                                <h4 style={{ fontSize: '1rem', marginBottom: '16px', fontWeight: 600, color: '#166534' }}>Upload Assets</h4>
 
                                 {/* Custom Multi-file uploader UI */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                                        <label className="btn btn-secondary" style={{ cursor: 'pointer', padding: '8px 16px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                                            <IconPlus size={16} /> Select Files
+                                        <label className="btn btn-primary" style={{ cursor: 'pointer', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '1rem', background: '#22c55e', color: 'white', border: 'none' }}>
+                                            <IconPlus size={20} /> Select Files
                                             <input
                                                 type="file"
                                                 multiple
@@ -495,21 +626,21 @@ export default function NewJobPage() {
                                                 style={{ display: 'none' }}
                                             />
                                         </label>
-                                        <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+                                        <span style={{ fontSize: '0.9rem', color: '#15803d' }}>
                                             Supports multiple files (images, PDFs, documents)
                                         </span>
                                     </div>
 
                                     {files.length > 0 && (
-                                        <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             {files.map((file, i) => (
-                                                <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-surface)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text-primary)' }}>{file.name}</span>
-                                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>({(file.size / 1024).toFixed(1)} KB)</span>
+                                                <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid #bbf7d0', boxShadow: 'var(--shadow-sm)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <span style={{ fontSize: '1rem', fontWeight: 600, color: '#166534' }}>{file.name}</span>
+                                                        <span style={{ fontSize: '0.8125rem', color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>{(file.size / 1024).toFixed(1)} KB</span>
                                                     </div>
-                                                    <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: 'var(--color-pending)', cursor: 'pointer', padding: '4px', display: 'flex' }} title="Remove file">
-                                                        <IconX size={16} />
+                                                    <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '50%' }} title="Remove file" className="hover-bg-error">
+                                                        <IconX size={18} />
                                                     </button>
                                                 </li>
                                             ))}
@@ -531,6 +662,63 @@ export default function NewJobPage() {
                             placeholder="Special instructions, delivery details, etc." />
                     </div>
 
+                    {lineItems.length > 0 && (
+                        <div id="order-totals-section" style={{
+                            marginBottom: 'var(--space-md)', padding: 'var(--space-md) var(--space-lg)',
+                            background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '8px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Subtotal:</span>
+                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>{'\u20B5'}{subtotal.toFixed(2)}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Overall Added Cost:
+                                    <input type="number" value={globalCost} min="0" step="0.01" onChange={e => setGlobalCost(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                    <select value={globalCostType} onChange={e => setGlobalCostType(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--color-text-primary)' }}>
+                                        <option value="cedi">{'\u20B5'}</option>
+                                        <option value="percent">%</option>
+                                    </select>
+                                </span>
+                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-text-primary)' }}>
+                                    +{'\u20B5'}{Number(calculatedGlobalCost).toFixed(2)}
+                                </span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Overall Discount:
+                                    <input type="number" value={globalDiscount} min="0" step="0.01" onChange={e => setGlobalDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                    <select value={globalDiscountType} onChange={e => setGlobalDiscountType(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--color-text-primary)' }}>
+                                        <option value="cedi">{'\u20B5'}</option>
+                                        <option value="percent">%</option>
+                                    </select>
+                                </span>
+                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-pending)' }}>
+                                    -{'\u20B5'}{Number(calculatedGlobalDiscount).toFixed(2)}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Est. Tax: %
+                                    <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                </span>
+                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
+                                    {'\u20B5'}{taxAmount.toFixed(2)}
+                                </span>
+                            </div>
+                            <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
+                                <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    )}
+
                     <button
                         type="submit"
                         className="btn btn-primary btn-full"
@@ -540,86 +728,206 @@ export default function NewJobPage() {
                         {submitting ? 'Creating Job...' : `Create Job \u2014 \u20B5${finalTotal.toFixed(2)}`}
                     </button>
                 </form>
-            </div>
+            </div >
 
             {/* PRODUCT PICKER MODAL */}
-            {showProductPicker && (
-                <div className="modal-overlay" onClick={() => { setShowProductPicker(false); setSearchTerm(''); }}>
-                    <div className="modal modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-                        <div className="modal-header">
-                            <h3 className="modal-title">Select Product / Service</h3>
-                            <button className="modal-close" onClick={() => { setShowProductPicker(false); setSearchTerm(''); }}>
-                                <IconX size={18} />
-                            </button>
-                        </div>
+            {
+                showProductPicker && (
+                    <div className="modal-overlay" onClick={() => { setShowProductPicker(false); setSearchTerm(''); }}>
+                        <div className="modal modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                            <div className="modal-header">
+                                <h3 className="modal-title">Select Product / Service</h3>
+                                <button className="modal-close" onClick={() => { setShowProductPicker(false); setSearchTerm(''); }}>
+                                    <IconX size={18} />
+                                </button>
+                            </div>
 
-                        <div style={{ padding: '0 var(--space-lg)', marginBottom: 'var(--space-md)' }}>
-                            <input
-                                type="text"
-                                className="form-input"
-                                placeholder="Search products..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
+                            <div style={{ padding: '0 var(--space-lg)', marginBottom: 'var(--space-md)' }}>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Search products..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
 
-                        <div style={{ overflowY: 'auto', flex: 1, padding: '0 var(--space-lg) var(--space-lg)' }}>
-                            {Object.entries(displayGroups).map(([category, products]) => (
-                                <div key={category} style={{ marginBottom: 'var(--space-lg)' }}>
-                                    <div style={{
-                                        fontSize: '0.6875rem', fontWeight: 700,
-                                        color: 'var(--color-text-muted)', textTransform: 'uppercase',
-                                        letterSpacing: '0.08em', marginBottom: 'var(--space-sm)',
-                                        padding: '0 var(--space-xs)'
-                                    }}>
-                                        {category}
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {products.map(product => {
-                                            const alreadyAdded = lineItems.some(li => li.productId === product.id);
-                                            return (
-                                                <button
-                                                    key={product.id}
-                                                    type="button"
-                                                    onClick={() => addProduct(product)}
-                                                    style={{
-                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                                        width: '100%', padding: '10px 12px',
-                                                        background: alreadyAdded ? 'var(--color-progress-bg)' : 'var(--color-bg-secondary)',
-                                                        border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
-                                                        cursor: 'pointer', textAlign: 'left', color: 'var(--color-text-primary)'
-                                                    }}
-                                                >
-                                                    <div>
-                                                        <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>
-                                                            {product.name}
-                                                            {alreadyAdded && <span style={{ color: 'var(--color-accent)', marginLeft: '8px', fontSize: '0.75rem' }}>Added</span>}
-                                                        </div>
-                                                        {product.description && (
-                                                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: '2px', maxWidth: '400px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {product.description}
+                            <div style={{ overflowY: 'auto', flex: 1, padding: '0 var(--space-lg) var(--space-lg)' }}>
+                                {Object.entries(displayGroups).map(([category, products]) => (
+                                    <div key={category} style={{ marginBottom: 'var(--space-lg)' }}>
+                                        <div style={{
+                                            fontSize: '0.6875rem', fontWeight: 700,
+                                            color: 'var(--color-text-muted)', textTransform: 'uppercase',
+                                            letterSpacing: '0.08em', marginBottom: 'var(--space-sm)',
+                                            padding: '0 var(--space-xs)'
+                                        }}>
+                                            {category}
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {products.map(product => {
+                                                const alreadyAdded = lineItems.some(li => li.productId === product.id);
+                                                return (
+                                                    <button
+                                                        key={product.id}
+                                                        type="button"
+                                                        onClick={() => addProduct(product)}
+                                                        style={{
+                                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                            width: '100%', padding: '10px 12px',
+                                                            background: alreadyAdded ? 'var(--color-progress-bg)' : 'var(--color-bg-secondary)',
+                                                            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
+                                                            cursor: 'pointer', textAlign: 'left', color: 'var(--color-text-primary)'
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                                                                {product.name}
+                                                                {alreadyAdded && <span style={{ color: 'var(--color-accent)', marginLeft: '8px', fontSize: '0.75rem' }}>Added</span>}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                    <div style={{ fontWeight: 700, fontSize: '0.875rem', marginLeft: 'var(--space-md)' }}>
-                                                        {'\u20B5'}{product.rate.toFixed(2)}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
+                                                            {product.description && (
+                                                                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: '2px', maxWidth: '400px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    {product.description}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.875rem', marginLeft: 'var(--space-md)' }}>
+                                                            {'\u20B5'}{product.rate.toFixed(2)}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                            {Object.keys(displayGroups).length === 0 && (
-                                <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-muted)' }}>
-                                    No products match &quot;{searchTerm}&quot;
-                                </div>
-                            )}
+                                ))}
+                                {Object.keys(displayGroups).length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-muted)' }}>
+                                        No products match &quot;{searchTerm}&quot;
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+
+            {/* CUSTOM ITEM PICKER MODAL */}
+            {
+                showCustomItemPicker && (
+                    <div className="modal-overlay" onClick={() => setShowCustomItemPicker(false)}>
+                        <div className="modal modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '460px' }}>
+                            <div className="modal-header">
+                                <h3 className="modal-title">Add Custom Item</h3>
+                                <button className="modal-close" onClick={() => setShowCustomItemPicker(false)}>
+                                    <IconX size={18} />
+                                </button>
+                            </div>
+                            <div className="modal-body" style={{ padding: 'var(--space-lg)' }}>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const fd = new FormData(e.target);
+                                    addCustomItem(
+                                        fd.get('name'),
+                                        fd.get('rate'),
+                                        Number(fd.get('qty') || 1),
+                                        Number(fd.get('discount') || 0),
+                                        fd.get('discountType')
+                                    );
+                                }}>
+                                    <div className="form-group">
+                                        <label className="form-label">Item / Service Name *</label>
+                                        <input name="name" type="text" className="form-input" required autoFocus placeholder="e.g. Custom Rush Printing" />
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Price / Rate ({'\u20B5'}) *</label>
+                                            <input name="rate" type="number" step="0.01" min="0" className="form-input" required placeholder="0.00" />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Quantity</label>
+                                            <input name="qty" type="number" min="1" defaultValue="1" className="form-input" required />
+                                        </div>
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">Discount Section</label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input name="discount" type="number" step="0.01" min="0" defaultValue="0" className="form-input" style={{ flex: 1 }} />
+                                            <select name="discountType" className="form-input" style={{ width: '80px', padding: '0 8px' }}>
+                                                <option value="cedi">{'\u20B5'}</option>
+                                                <option value="percent">%</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: 'var(--space-xl)' }}>
+                                        <button type="submit" className="btn btn-primary btn-full" style={{ padding: '12px', fontSize: '1rem' }}>
+                                            Add to Job
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* CUSTOM ITEM PICKER MODAL */}
+            {
+                showCustomItemPicker && (
+                    <div className="modal-overlay" onClick={() => setShowCustomItemPicker(false)}>
+                        <div className="modal modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '460px' }}>
+                            <div className="modal-header">
+                                <h3 className="modal-title">Add Custom Item</h3>
+                                <button className="modal-close" onClick={() => setShowCustomItemPicker(false)}>
+                                    <IconX size={18} />
+                                </button>
+                            </div>
+                            <div className="modal-body" style={{ padding: 'var(--space-lg)' }}>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const fd = new FormData(e.target);
+                                    addCustomItem(
+                                        fd.get('name'),
+                                        fd.get('rate'),
+                                        Number(fd.get('qty') || 1),
+                                        Number(fd.get('discount') || 0),
+                                        fd.get('discountType')
+                                    );
+                                }}>
+                                    <div className="form-group">
+                                        <label className="form-label">Item / Service Name *</label>
+                                        <input name="name" type="text" className="form-input" required autoFocus placeholder="e.g. Custom Rush Printing" />
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Price / Rate ({'\u20B5'}) *</label>
+                                            <input name="rate" type="number" step="0.01" min="0" className="form-input" required placeholder="0.00" />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Quantity</label>
+                                            <input name="qty" type="number" min="1" defaultValue="1" className="form-input" required />
+                                        </div>
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">Discount Section</label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input name="discount" type="number" step="0.01" min="0" defaultValue="0" className="form-input" style={{ flex: 1 }} />
+                                            <select name="discountType" className="form-input" style={{ width: '80px', padding: '0 8px' }}>
+                                                <option value="cedi">{'\u20B5'}</option>
+                                                <option value="percent">%</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: 'var(--space-xl)' }}>
+                                        <button type="submit" className="btn btn-primary btn-full" style={{ padding: '12px', fontSize: '1rem' }}>
+                                            Add to Job
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }

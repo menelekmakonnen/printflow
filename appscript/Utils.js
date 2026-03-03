@@ -37,6 +37,13 @@ function getSheet(tabName) {
 }
 
 /**
+ * Normalize sheet headers to match API object keys (e.g. "Item Name" -> "item_name")
+ */
+function normalizeHeader(h) {
+    return String(h).trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+/**
  * Get all rows from a sheet as an array of objects keyed by header names
  */
 function getSheetData(tabName) {
@@ -44,7 +51,7 @@ function getSheetData(tabName) {
     const data = sheet.getDataRange().getValues();
     if (data.length <= 1) return [];
 
-    const headers = data[0];
+    const headers = data[0].map(normalizeHeader);
     const rows = [];
     for (let i = 1; i < data.length; i++) {
         const row = {};
@@ -62,15 +69,19 @@ function getSheetData(tabName) {
  */
 function appendRow(tabName, rowObject, headers) {
     const sheet = getSheet(tabName);
-    const existingData = sheet.getDataRange().getValues();
+    let existingData = sheet.getDataRange().getValues();
 
     // If sheet is empty, write headers first
     if (existingData.length === 0 || existingData[0].join('') === '') {
-        sheet.appendRow(headers);
+        sheet.appendRow(headers || Object.keys(rowObject));
+        existingData = sheet.getDataRange().getValues();
     }
 
-    const hdr = headers || existingData[0];
-    const rowArray = hdr.map(h => rowObject[h] !== undefined ? rowObject[h] : '');
+    const hdrRaw = existingData[0];
+    const hdrNorm = hdrRaw.map(normalizeHeader);
+
+    // Default the row array using the normalized names
+    const rowArray = hdrNorm.map(h => rowObject[h] !== undefined ? rowObject[h] : '');
     sheet.appendRow(rowArray);
 }
 
@@ -79,8 +90,9 @@ function appendRow(tabName, rowObject, headers) {
  */
 function updateCell(tabName, rowIndex, header, value) {
     const sheet = getSheet(tabName);
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const colIndex = headers.indexOf(header);
+    const headersRaw = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headers = headersRaw.map(normalizeHeader);
+    const colIndex = headers.indexOf(normalizeHeader(header));
     if (colIndex === -1) throw new Error(`Column "${header}" not found in ${tabName}`);
     sheet.getRange(rowIndex, colIndex + 1).setValue(value);
 }

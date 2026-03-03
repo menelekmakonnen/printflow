@@ -60,41 +60,51 @@ function handleGetConfig(payload) {
 }
 
 /**
- * Update a configuration value
+ * Update configuration values (batch)
  */
 function handleUpdateConfig(payload) {
     const auth = requireAuth(payload.token, ['super_admin']);
     if (auth.error) return auth.error;
 
-    const { config_key, config_value } = payload;
+    // Payload can be a map of configs excluding reserved words
+    const updates = { ...payload };
+    delete updates.action;
+    delete updates.token;
 
-    if (!config_key) {
-        return errorResponse('config_key is required', 400);
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+        return errorResponse('No configuration data provided', 400);
     }
 
-    const existing = findRow(SHEET_CONFIG, 'config_key', config_key);
-    const isJson = typeof config_value === 'object';
-    const valueStr = isJson ? JSON.stringify(config_value) : String(config_value);
+    let updatedCount = 0;
 
-    if (existing) {
-        updateRow(SHEET_CONFIG, existing._rowIndex, {
-            config_value: valueStr,
-            config_type: isJson ? 'json' : 'string',
-            updated_by: auth.user.username,
-            updated_at: now()
-        });
-    } else {
-        appendRow(SHEET_CONFIG, {
-            config_key: config_key,
-            config_value: valueStr,
-            config_type: isJson ? 'json' : 'string',
-            updated_by: auth.user.username,
-            updated_at: now()
-        }, CONFIG_HEADERS);
-    }
+    keys.forEach(config_key => {
+        const config_value = updates[config_key];
+        const existing = findRow(SHEET_CONFIG, 'config_key', config_key);
+        const isJson = typeof config_value === 'object';
+        const valueStr = isJson ? JSON.stringify(config_value) : String(config_value);
 
-    logActivity(auth.user.username, 'update_config', `Updated config: ${config_key}`);
-    return jsonResponse({ message: `Config "${config_key}" updated` });
+        if (existing) {
+            updateRow(SHEET_CONFIG, existing._rowIndex, {
+                config_value: valueStr,
+                config_type: isJson ? 'json' : 'string',
+                updated_by: auth.user.username,
+                updated_at: now()
+            });
+        } else {
+            appendRow(SHEET_CONFIG, {
+                config_key: config_key,
+                config_value: valueStr,
+                config_type: isJson ? 'json' : 'string',
+                updated_by: auth.user.username,
+                updated_at: now()
+            }, CONFIG_HEADERS);
+        }
+        updatedCount++;
+    });
+
+    logActivity(auth.user.username, 'update_config', `Updated ${updatedCount} config keys`);
+    return jsonResponse({ message: `Updated ${updatedCount} configurations` });
 }
 
 /**

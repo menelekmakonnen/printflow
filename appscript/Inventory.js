@@ -5,7 +5,7 @@
 
 const INVENTORY_HEADERS = [
     'item_id', 'item_name', 'low_stock_threshold', 'unit_cost',
-    'quantity_in_pack', 'sku', 'product_type', 'status', 'created_at'
+    'quantity_in_pack', 'sku', 'product_type', 'status', 'discount', 'created_at'
 ];
 
 /**
@@ -36,7 +36,7 @@ function handleAddInventoryItem(payload) {
     if (auth.error) return auth.error;
 
     // A purchase happens in Pcks/Boxes, we convert to Sheets mathematically later
-    const { item_name, low_stock_threshold, unit_cost, quantity_in_pack, sku, product_type, status } = payload;
+    const { item_name, low_stock_threshold, unit_cost, quantity_in_pack, sku, product_type, status, discount } = payload;
 
     if (!item_name || !unit_cost) {
         return errorResponse('Item name and Unit Cost are required', 400);
@@ -56,6 +56,7 @@ function handleAddInventoryItem(payload) {
         sku: sku || '',
         product_type: product_type || 'material',
         status: stockStatus,
+        discount: Number(discount || 0),
         created_at: now()
     };
 
@@ -65,7 +66,7 @@ function handleAddInventoryItem(payload) {
     // Auto-create an Expense Entry for this stock purchase
     try {
         const expenseId = 'EXP-' + Utilities.getUuid().split('-')[0].toUpperCase();
-        const expenseTotal = Number(unit_cost);
+        const expenseTotal = Math.max(0, Number(unit_cost) - Number(discount || 0));
         const expenseStatus = stockStatus === 'arrived' ? 'paid' : 'pending';
         appendRow(SHEET_EXPENSES, {
             expense_id: expenseId,
@@ -94,7 +95,7 @@ function handleUpdateInventoryItem(payload) {
     const auth = requireAuth(payload.token, ['admin', 'super_admin']);
     if (auth.error) return auth.error;
 
-    const { item_id, item_name, low_stock_threshold, unit_cost, quantity_in_pack, sku, product_type, status, edit_memo } = payload;
+    const { item_id, item_name, low_stock_threshold, unit_cost, quantity_in_pack, sku, product_type, status, discount, edit_memo } = payload;
 
     if (!item_id) return errorResponse('item_id is required', 400);
 
@@ -109,6 +110,7 @@ function handleUpdateInventoryItem(payload) {
     if (sku !== undefined) updates.sku = sku;
     if (product_type !== undefined) updates.product_type = product_type;
     if (status !== undefined) updates.status = status;
+    if (discount !== undefined) updates.discount = Number(discount);
 
     updateRow(SHEET_INVENTORY, existing._rowIndex, updates);
     logActivity(auth.user.username, 'update_inventory', `Updated inventory item: ${existing.item_name}. Memo: ${edit_memo || 'Status Change'}`);

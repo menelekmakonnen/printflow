@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getUser, getDashboardStats, getJobs, hasAnyRole, getUserRoles } from '@/lib/api';
 import {
     IconPlusCircle, IconClipboard, IconQueue, IconInbox,
-    IconArrowRight, IconClock, IconDollarSign
+    IconArrowRight, IconClock, IconDollarSign, IconTag
 } from '@/lib/icons';
 import Link from 'next/link';
 
@@ -97,6 +97,17 @@ export default function DashboardHome() {
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-md)', marginBottom: 'var(--space-xl)' }}>
+                {(roles.some(r => ['receptionist', 'admin', 'super_admin'].includes(r))) && (
+                    <Link href="/dashboard/products" style={{ textDecoration: 'none' }}>
+                        <div className="card card-hover" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
+                            <div style={{ marginBottom: 'var(--space-sm)', color: 'var(--color-accent)' }}><IconTag size={32} /></div>
+                            <div style={{ fontWeight: 700, fontSize: '1rem' }}>Products & Services</div>
+                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginTop: 'var(--space-xs)' }}>
+                                Browse catalog and build quotes
+                            </div>
+                        </div>
+                    </Link>
+                )}
                 {(roles.some(r => ['receptionist', 'admin', 'super_admin'].includes(r))) && (
                     <Link href="/dashboard/jobs/new" style={{ textDecoration: 'none' }}>
                         <div className="card card-hover" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>

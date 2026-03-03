@@ -99,6 +99,9 @@ function routeAction(action, payload) {
         // Dashboard stats
         'getDashboardStats': handleGetDashboardStats,
 
+        // DB Init via URL
+        'setup': setupPrintFlow,
+
         // Inventory
         'getInventory': handleGetInventory,
         'addInventoryItem': handleAddInventoryItem,
@@ -251,6 +254,21 @@ function setupPrintFlow() {
             sheet.setFrozenRows(1);
         }
     });
+
+    if (payload && payload.action === 'setup') {
+        const adminUser = {
+            user_id: Utilities.getUuid(),
+            username: 'admin',
+            password_hash: hashPassword('admin123'),
+            display_name: 'Super Admin',
+            roles: 'super_admin',
+            status: 'active',
+            created_at: now()
+        };
+        const existingAdmin = findRow(SHEET_USERS, 'username', 'admin');
+        if (!existingAdmin) appendRow(SHEET_USERS, adminUser);
+        return jsonResponse({ message: 'Setup Complete' });
+    }
 
     // Create initial super_admin account
     const existingAdmin = findRow(SHEET_USERS, 'username', 'admin');

@@ -80,24 +80,21 @@ export default function LoginPage() {
         <ThemeToggle />
       </div>
       <div className="login-card">
-        <div className="login-logo">
+        <div className="login-logo" style={{ textAlign: 'center', marginBottom: '24px' }}>
           {systemLogo ? (
             <img
               src={systemLogo}
               alt={companyName}
-              style={{ maxHeight: '60px', maxWidth: '220px', marginBottom: '8px', objectFit: 'contain' }}
+              style={{ maxHeight: '60px', maxWidth: '220px', objectFit: 'contain' }}
             />
           ) : (
-            <Image
+            <img
               src={theme === 'dark' ? '/images/logo-light.png' : '/images/logo-dark.png'}
               alt={companyName}
-              width={220}
-              height={60}
-              style={{ marginBottom: '8px', objectFit: 'contain' }}
-              priority
+              style={{ maxHeight: '60px', maxWidth: '220px', objectFit: 'contain' }}
             />
           )}
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, marginTop: '4px' }}>Print Office Operations</p>
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, margin: '8px 0 0' }}>Print Office Operations</p>
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}

@@ -20,7 +20,8 @@ export default function InventoryPage() {
         quantity_in_stock: 0,
         unit: 'sheets',
         min_threshold: 0,
-        unit_cost: 0
+        unit_cost: 0,
+        discount: 0
     });
 
     const CATEGORIES = ['Paper', 'Ink/Toner', 'Binding Supplies', 'Lamination', 'Packaging', 'Other'];
@@ -47,7 +48,8 @@ export default function InventoryPage() {
             quantity_in_stock: 0,
             unit: 'sheets',
             min_threshold: 100,
-            unit_cost: 0
+            unit_cost: 0,
+            discount: 0
         });
         setMessage({ type: '', text: '' });
         setShowModal(true);
@@ -61,7 +63,8 @@ export default function InventoryPage() {
             quantity_in_stock: item.quantity_in_stock || 0,
             unit: item.unit || 'sheets',
             min_threshold: item.min_threshold || 0,
-            unit_cost: item.unit_cost || 0
+            unit_cost: item.unit_cost || 0,
+            discount: item.discount || 0
         });
         setMessage({ type: '', text: '' });
         setShowModal(true);
@@ -280,6 +283,16 @@ export default function InventoryPage() {
                                             className="form-input"
                                             value={form.unit_cost}
                                             onChange={e => setForm({ ...form, unit_cost: Number(e.target.value) })}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Discount</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            className="form-input"
+                                            value={form.discount}
+                                            onChange={e => setForm({ ...form, discount: Number(e.target.value) })}
                                         />
                                     </div>
                                 </div>

@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getExpenses, addExpense, updateExpense, deleteExpense, getConfig, getUser } from '@/lib/api';
+import { getExpenses, addExpense, updateExpense, deleteExpense, getConfig, getUser, getInventory, addInventoryItem } from '@/lib/api';
 import { IconPlus, IconClipboard, IconEdit, IconTrash } from '@/lib/icons';
 
 export default function ExpensesPage() {
     const [expenses, setExpenses] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [inventoryItems, setInventoryItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [user, setUser] = useState(() => typeof window !== 'undefined' ? getUser() : null);
@@ -14,6 +15,7 @@ export default function ExpensesPage() {
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
+    const [linkToInventory, setLinkToInventory] = useState(false);
     const [modalError, setModalError] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -25,14 +27,16 @@ export default function ExpensesPage() {
         description: '',
         payment_status: 'paid',
         payment_date: '',
-        edit_memo: ''
+        edit_memo: '',
+        quantity_in_pack: 1, // Specific for inventory link
+        delivery_status: 'arrived' // Specific for inventory link
     });
 
     // Move loadData above useEffect to fix hoisting lint
     async function loadData() {
         setLoading(true);
         try {
-            const [confRes, expRes] = await Promise.all([getConfig(), getExpenses('all')]);
+            const [confRes, expRes, invRes] = await Promise.all([getConfig(), getExpenses('all'), getInventory('all')]);
             if (confRes.success) {
                 setCategories(confRes.data.expense_categories || []);
             }
@@ -40,6 +44,9 @@ export default function ExpensesPage() {
                 setExpenses(expRes.data);
             } else {
                 setError(expRes.error || 'Failed to load expenses');
+            }
+            if (invRes.success) {
+                setInventoryItems(invRes.data);
             }
         } catch (e) {
             setError('Connection error loading expenses');
@@ -54,9 +61,11 @@ export default function ExpensesPage() {
     function openAddModal() {
         setForm({
             expense_id: '', category: categories[0] || '', amount: '', description: '',
-            payment_status: 'paid', payment_date: new Date().toISOString().split('T')[0], edit_memo: ''
+            payment_status: 'paid', payment_date: new Date().toISOString().split('T')[0], edit_memo: '',
+            quantity_in_pack: 1, delivery_status: 'arrived'
         });
         setModalMode('add');
+        setLinkToInventory(false);
         setModalError('');
         setIsModalOpen(true);
     }
@@ -95,7 +104,18 @@ export default function ExpensesPage() {
 
         const payload = { ...form };
         if (modalMode === 'add') {
-            res = await addExpense(payload);
+            if (form.category === 'Stock & Materials' && linkToInventory) {
+                // Route to Inventory API which auto-creates the expense
+                res = await addInventoryItem({
+                    item_name: form.description,
+                    unit_cost: form.amount,
+                    quantity_in_pack: form.quantity_in_pack,
+                    status: form.delivery_status,
+                    product_type: 'material'
+                });
+            } else {
+                res = await addExpense(payload);
+            }
         } else {
             res = await updateExpense(form.expense_id, payload, form.edit_memo);
         }
@@ -154,9 +174,9 @@ export default function ExpensesPage() {
                 </div>
             </div>
 
-            <div className="card">
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
-                    <table className="table">
+                    <table className="data-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
@@ -221,7 +241,11 @@ export default function ExpensesPage() {
 
                                 <div className="form-group">
                                     <label className="form-label">Category *</label>
-                                    <select className="form-input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} required>
+                                    <select className="form-input" value={form.category} onChange={e => {
+                                        const cat = e.target.value;
+                                        setForm({ ...form, category: cat });
+                                        if (cat !== 'Stock & Materials') setLinkToInventory(false);
+                                    }} required>
                                         <option value="">Select Category...</option>
                                         {categories.map(c => (
                                             <option key={c} value={c}>{c}</option>
@@ -229,32 +253,66 @@ export default function ExpensesPage() {
                                     </select>
                                 </div>
 
+                                {form.category === 'Stock & Materials' && modalMode === 'add' && (
+                                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="checkbox" id="linkInvToggle" checked={linkToInventory} onChange={e => setLinkToInventory(e.target.checked)} />
+                                        <label htmlFor="linkInvToggle" style={{ fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer' }}>
+                                            Link to Inventory (Auto-add Stock)
+                                        </label>
+                                    </div>
+                                )}
+
                                 <div className="form-group">
-                                    <label className="form-label">Amount ({'\u20B5'}) *</label>
+                                    <label className="form-label">{linkToInventory ? 'Total Pack Cost (\u20B5) *' : 'Amount (\u20B5) *'}</label>
                                     <input type="number" step="0.01" min="0" className="form-input" required
                                         value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="form-label">Description</label>
-                                    <input type="text" className="form-input" placeholder="What was this for?"
-                                        value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+                                    <label className="form-label">{linkToInventory ? 'Inventory Item Name *' : 'Description / Expense Name'}</label>
+                                    <input list="expense-desc-list" type="text" className="form-input" placeholder={linkToInventory ? "Select or type stock item" : "What was this for?"}
+                                        value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} required={linkToInventory} />
+                                    <datalist id="expense-desc-list">
+                                        {linkToInventory ? (
+                                            Array.from(new Set(inventoryItems.map(i => i.item_name))).map(name => <option key={name} value={name} />)
+                                        ) : (
+                                            Array.from(new Set(expenses.map(e => e.description).filter(Boolean))).map(desc => <option key={desc} value={desc} />)
+                                        )}
+                                    </datalist>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                    <div className="form-group">
-                                        <label className="form-label">Status</label>
-                                        <select className="form-input" value={form.payment_status} onChange={e => setForm({ ...form, payment_status: e.target.value })}>
-                                            <option value="paid">Paid</option>
-                                            <option value="pending">Pending</option>
-                                        </select>
+                                {linkToInventory && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Units/Sheets per Pack</label>
+                                            <input type="number" min="1" className="form-input" value={form.quantity_in_pack} onChange={e => setForm({ ...form, quantity_in_pack: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Delivery Date</label>
+                                            <select className="form-input" value={form.delivery_status} onChange={e => setForm({ ...form, delivery_status: e.target.value })}>
+                                                <option value="arrived">Arrived (Available Now)</option>
+                                                <option value="pending">Pending (Paid in Advance)</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Payment Date</label>
-                                        <input type="date" className="form-input"
-                                            value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} />
+                                )}
+
+                                {!linkToInventory && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Status</label>
+                                            <select className="form-input" value={form.payment_status} onChange={e => setForm({ ...form, payment_status: e.target.value })}>
+                                                <option value="paid">Paid</option>
+                                                <option value="pending">Pending</option>
+                                            </select>
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Payment Date</label>
+                                            <input type="date" className="form-input"
+                                                value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} />
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {modalMode === 'edit' && (
                                     <div className="form-group" style={{ marginTop: '8px' }}>
