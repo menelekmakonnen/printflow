@@ -6,6 +6,57 @@
 const NOTIFICATION_HEADERS = ['id', 'job_id', 'channel', 'notification_type', 'recipient', 'sent_at', 'status', 'error_message'];
 
 const NOTIFICATION_MESSAGES = {
+  invoice: {
+    subject: 'Invoice for Job {JOB_ID} — PopOut Studios',
+    body: `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">PopOut Studios</h1>
+          <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Print Office Operations</p>
+        </div>
+        <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+          <h2 style="color: #1e3a5f; margin-top: 0;">🧾 Order Invoice</h2>
+          <p>Dear <strong>{CLIENT_NAME}</strong>,</p>
+          <p>Thank you for your order! Your job has been created. Please find your invoice details below. Let us know if you have any questions.</p>
+          
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; margin: 20px 0; border-radius: 8px;">
+            <p style="margin: 0;"><strong>Job Ticket:</strong> {JOB_ID}</p>
+            <p style="margin: 5px 0 0 0;"><strong>Job Type:</strong> {JOB_TYPE}</p>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e2e8f0;">
+                <th style="text-align: left; padding: 8px;">Item</th>
+                <th style="text-align: right; padding: 8px;">Rate</th>
+                <th style="text-align: right; padding: 8px;">Qty</th>
+                <th style="text-align: right; padding: 8px;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ITEMS_HTML}
+            </tbody>
+            <tfoot>
+              <tr><td colspan="4" style="border-bottom: 1px solid #e2e8f0; height: 10px;"></td></tr>
+              <tr>
+                <td colspan="3" style="text-align: right; padding: 12px 8px 4px; font-weight: 600; color: #64748b;">Subtotal</td>
+                <td style="text-align: right; padding: 12px 8px 4px; font-weight: 600;">₵{DISC_SUBTOTAL}</td>
+              </tr>
+              <tr>
+                <td colspan="3" style="text-align: right; padding: 4px 8px; font-weight: 600; color: #64748b;">Tax ({TAX_PCT}%)</td>
+                <td style="text-align: right; padding: 4px 8px; font-weight: 600;">₵{TAX_AMT}</td>
+              </tr>
+              <tr>
+                <td colspan="3" style="text-align: right; padding: 8px; font-weight: bold; font-size: 16px; color: #1e3a5f;">Total</td>
+                <td style="text-align: right; padding: 8px; font-weight: bold; font-size: 16px; color: #1e3a5f;">₵{TOTAL}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <p style="color: #6b7280; font-size: 13px; text-align: center; margin-top: 30px;">Thank you for choosing PopOut Studios.</p>
+        </div>
+      </div>`
+  },
   approved: {
     subject: 'Job {JOB_ID} Approved — PopOut Studios',
     body: `

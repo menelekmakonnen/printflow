@@ -15,8 +15,11 @@ export default function NewJobPage() {
         client_name: '',
         client_email: '',
         client_phone: '',
+        client_phone: '',
         job_description: '',
-        requires_design: false
+        requires_design: false,
+        requires_delivery: false,
+        delivery_fee: 0
     });
 
     const [files, setFiles] = useState([]);
@@ -114,7 +117,8 @@ export default function NewJobPage() {
     const subtotal = lineItems.reduce((sum, item) => sum + ((item.rate * item.quantity) - (Number(item.discount) || 0)), 0);
     const afterGlobalDiscount = Math.max(0, subtotal - (Number(globalDiscount) || 0));
     const taxAmount = afterGlobalDiscount * (Number(estTaxRate) / 100);
-    const finalTotal = afterGlobalDiscount + taxAmount;
+    const deliveryDelta = (form.requires_delivery && form.delivery_fee) ? Number(form.delivery_fee) : 0;
+    const finalTotal = afterGlobalDiscount + taxAmount + deliveryDelta;
 
     function addProduct(product) {
         const existing = lineItems.findIndex(li => li.productId === product.id);
@@ -191,6 +195,10 @@ export default function NewJobPage() {
             detailedDescription += `\nEst. Tax (${estTaxRate}%): \u20B5${taxAmount.toFixed(2)}`;
         }
 
+        if (form.requires_delivery && form.delivery_fee > 0) {
+            detailedDescription += `\nDelivery Fee: \u20B5${Number(form.delivery_fee).toFixed(2)}`;
+        }
+
         detailedDescription += `\n\nFINAL TOTAL: \u20B5${finalTotal.toFixed(2)}`;
 
         if (form.job_description) {
@@ -204,7 +212,12 @@ export default function NewJobPage() {
             job_type: jobType.length > 100 ? jobType.substring(0, 97) + '...' : jobType,
             job_description: detailedDescription,
             total_amount: finalTotal,
-            requires_design: form.requires_design
+            requires_design: form.requires_design,
+            requires_delivery: form.requires_delivery,
+            delivery_fee: form.requires_delivery ? Number(form.delivery_fee) : 0,
+            delivery_status: form.requires_delivery ? 'pending' : 'none',
+            tax_percentage: estTaxRate, // pass tax rate to back-end for email mapping
+            items: lineItems // pass line items to back-end for invoice generation
         };
 
         try {
@@ -439,6 +452,32 @@ export default function NewJobPage() {
                                 <span style={{ fontWeight: 600 }}>Yes, requires design</span>
                             </label>
                         </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
+                            <div>
+                                <h3 className="card-title" style={{ margin: 0 }}>Delivery Services</h3>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>Does this order require courier delivery?</p>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={form.requires_delivery}
+                                    onChange={e => setForm(f => ({ ...f, requires_delivery: e.target.checked }))}
+                                    style={{ width: '20px', height: '20px', marginRight: '8px', cursor: 'pointer' }}
+                                />
+                                <span style={{ fontWeight: 600 }}>Yes, requires delivery</span>
+                            </label>
+                        </div>
+
+                        {form.requires_delivery && (
+                            <div className="form-group" style={{ marginBottom: 'var(--space-md)' }}>
+                                <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Delivery Fee ({'\u20B5'})</label>
+                                <input type="number" step="0.01" className="form-input" required={form.requires_delivery} style={{ maxWidth: '200px' }}
+                                    value={form.delivery_fee} onChange={e => setForm(f => ({ ...f, delivery_fee: e.target.value }))}
+                                    placeholder="Enter delivery cost..." />
+                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>This fee will be added to the invoice total and logged as a Courier Expense automatically.</p>
+                            </div>
+                        )}
 
                         {!form.requires_design && (
                             <div style={{ marginTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-md)' }}>

@@ -121,7 +121,7 @@ function handleCreateJob(payload) {
     // Create case folder in Drive
     let caseFolderUrl = '';
     try {
-        caseFolderUrl = createCaseFolder(jobId);
+        caseFolderUrl = createCaseFolder(jobId, client_name);
     } catch (e) {
         Logger.log('Drive folder creation failed: ' + e.message);
     }
@@ -134,6 +134,9 @@ function handleCreateJob(payload) {
         notification_pref: notification_pref || 'email',
         job_type: job_type,
         job_description: job_description || '',
+        requires_delivery: payload.requires_delivery === true,
+        delivery_fee: Number(payload.delivery_fee || 0),
+        delivery_status: payload.delivery_status || 'none',
         total_amount: Number(total_amount),
         payment_status: 'pending',
         status: 'pending_payment',
@@ -151,6 +154,42 @@ function handleCreateJob(payload) {
 
     appendRow(SHEET_JOBS, job, JOB_HEADERS);
     logActivity(auth.user.username, 'create_job', `Created job ${jobId} for ${client_name}`);
+
+    // Generate Invoice PDF and Email Client
+    try {
+        // We pass the payload items array so the notification can render the itemized table
+        if (payload.items && payload.items.length > 0) {
+            // Temporarily bind the tax pct to the job object so the email template can read it
+            const taxPct = payload.tax_percentage || 0;
+            job._tax_pct = taxPct;
+            sendInvoiceEmail(job, payload.items);
+            delete job._tax_pct; // Clean up before returning to frontend
+        }
+    } catch (e) {
+        Logger.log('Failed to send invoice email: ' + e.message);
+    }
+
+    // Auto-log Delivery Expense if required
+    if (payload.requires_delivery && Number(payload.delivery_fee) > 0) {
+        try {
+            const expenseId = 'EXP-' + Utilities.getUuid().split('-')[0].toUpperCase();
+            appendRow(SHEET_EXPENSES, {
+                expense_id: expenseId,
+                category: 'Courier/Delivery',
+                amount: Number(payload.delivery_fee),
+                description: `Delivery for Job ${jobId} (${client_name})`,
+                date_logged: now(),
+                payment_status: 'pending',
+                logged_by: auth.user.username,
+                payment_date: ''
+            }, [
+                'expense_id', 'category', 'amount', 'description',
+                'date_logged', 'payment_status', 'logged_by', 'payment_date'
+            ]);
+        } catch (err) {
+            Logger.log('Failed to auto-log delivery expense: ' + err.message);
+        }
+    }
 
     return jsonResponse(job);
 }

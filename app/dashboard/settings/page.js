@@ -336,6 +336,7 @@ export default function SettingsPage() {
                         <span style={{ fontWeight: 600 }}>Database:</span><span>Google Sheets</span>
                         <span style={{ fontWeight: 600 }}>Notifications:</span><span>Gmail + Calendar</span>
                         <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
+                        <span style={{ fontWeight: 600 }}>Developed By:</span><span>ICUNI Labs</span>
                     </div>
                 </div>
             </div>

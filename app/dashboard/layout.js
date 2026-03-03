@@ -11,6 +11,7 @@ import {
     IconCedis, IconX, IconTag
 } from '@/lib/icons';
 import Link from 'next/link';
+import Image from 'next/image';
 
 /**
  * Build nav sections dynamically based on user's roles.
@@ -54,6 +55,7 @@ function buildNavSections(roles) {
     // Admin/Super Admin management
     if (roles.some(r => ['admin', 'super_admin'].includes(r))) {
         addItem('Management', { href: '/dashboard/accounting', icon: IconCedis, label: 'Accounting' });
+        addItem('Management', { href: '/dashboard/expenses', icon: IconClipboard, label: 'Expenses Tracking' });
         addItem('Management', { href: '/dashboard/users', icon: IconUsers, label: 'User Management' });
         addItem('Management', { href: '/dashboard/notifications', icon: IconBell, label: 'Notification Log' });
     }
@@ -87,7 +89,7 @@ function formatRoles(rolesStr) {
 export default function DashboardLayout({ children }) {
     const router = useRouter();
     const pathname = usePathname();
-    const [user, setUserState] = useState(null);
+    const [user, setUserState] = useState(() => typeof window !== 'undefined' ? getUser() : null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [systemLogo, setSystemLogo] = useState(null);
@@ -105,7 +107,6 @@ export default function DashboardLayout({ children }) {
             router.push('/');
             return;
         }
-        setUserState(getUser());
 
         async function fetchLogo() {
             const res = await getConfig();
@@ -217,11 +218,11 @@ export default function DashboardLayout({ children }) {
                 <div className="sidebar-header" style={{ minHeight: '80px', justifyContent: 'center' }}>
                     {systemLogo && !sidebarCollapsed ? (
                         <Link href="/dashboard" style={{ display: 'block', textAlign: 'center', width: '100%' }}>
-                            <img src={systemLogo} alt="Logo" style={{ maxHeight: '44px', maxWidth: '100%', objectFit: 'contain' }} />
+                            <Image src={systemLogo} width={150} height={44} alt="Logo" style={{ maxHeight: '44px', maxWidth: '100%', objectFit: 'contain' }} unoptimized />
                         </Link>
                     ) : sidebarCollapsed && systemFavicon ? (
                         <Link href="/dashboard" style={{ display: 'block', textAlign: 'center', width: '100%' }}>
-                            <img src={systemFavicon} alt="Icon" style={{ maxHeight: '32px', maxWidth: '100%', objectFit: 'contain' }} />
+                            <Image src={systemFavicon} width={32} height={32} alt="Icon" style={{ maxHeight: '32px', maxWidth: '100%', objectFit: 'contain' }} unoptimized />
                         </Link>
                     ) : (
                         <Link href="/dashboard" style={{ textDecoration: 'none' }}>

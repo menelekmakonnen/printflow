@@ -11,6 +11,13 @@ const DEFAULT_JOB_TYPES = [
     'posters', 'banners', 'id_cards', 'general_print', 'other'
 ];
 
+// Default expense categories
+const DEFAULT_EXPENSE_CATEGORIES = [
+    'Utilities', 'Equipment Maintenance', 'Rent', 'Salaries',
+    'Internet/Comms', 'Courier/Delivery', 'Software Subscriptions',
+    'Office Supplies', 'Advertising', 'Stock & Materials', 'Miscellaneous'
+];
+
 /**
  * Get all configuration entries
  */
@@ -24,6 +31,7 @@ function handleGetConfig(payload) {
     if (configs.length === 0) {
         return jsonResponse({
             job_types: DEFAULT_JOB_TYPES,
+            expense_categories: DEFAULT_EXPENSE_CATEGORIES,
             notification_channels: ['email'],
             company_name: 'PopOut Studios',
             currency: 'GHS',
@@ -43,6 +51,7 @@ function handleGetConfig(payload) {
 
     // Ensure defaults exist
     if (!configObj.job_types) configObj.job_types = DEFAULT_JOB_TYPES;
+    if (!configObj.expense_categories) configObj.expense_categories = DEFAULT_EXPENSE_CATEGORIES;
     if (!configObj.company_name) configObj.company_name = 'PopOut Studios';
     if (!configObj.currency) configObj.currency = 'GHS';
     if (!configObj.currency_symbol) configObj.currency_symbol = '₵';

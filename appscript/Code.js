@@ -110,7 +110,13 @@ function routeAction(action, payload) {
         'getProducts': handleGetProducts,
         'addProduct': handleAddProduct,
         'updateProduct': handleUpdateProduct,
-        'deleteProduct': handleDeleteProduct
+        'deleteProduct': handleDeleteProduct,
+
+        // Expenses
+        'getExpenses': handleGetExpenses,
+        'addExpense': handleAddExpense,
+        'updateExpense': handleUpdateExpense,
+        'deleteExpense': handleDeleteExpense
     };
 
     const handler = routes[action];
@@ -201,7 +207,9 @@ function setupPrintFlow() {
         [SHEET_JOBS]: [
             'job_id', 'client_name', 'client_email', 'client_phone',
             'notification_pref', 'job_type', 'job_description',
+            'requires_delivery', 'delivery_fee', 'delivery_status',
             'total_amount', 'payment_status', 'status', 'case_folder_url',
+            'requires_design', 'design_sample_url',
             'created_by', 'updated_by',
             'created_at', 'approved_at', 'processing_started_at',
             'finishing_started_at', 'completed_at'
@@ -212,6 +220,10 @@ function setupPrintFlow() {
         [SHEET_CONFIG]: ['config_key', 'config_value', 'config_type', 'updated_by', 'updated_at'],
         [SHEET_ACTIVITY]: ['id', 'username', 'action', 'description', 'timestamp'],
         [SHEET_INVENTORY]: ['item_id', 'item_name', 'low_stock_threshold', 'unit_cost', 'quantity_in_pack', 'sku', 'product_type', 'status', 'created_at'],
+        [SHEET_EXPENSES]: [
+            'expense_id', 'category', 'amount', 'description',
+            'date_logged', 'payment_status', 'logged_by', 'payment_date'
+        ],
         [SHEET_PRODUCTS]: [
             'item_id', 'item_name', 'description', 'rate', 'account', 'account_code',
             'tax_name', 'tax_percentage', 'tax_type', 'purchase_tax_name', 'purchase_tax_percentage',

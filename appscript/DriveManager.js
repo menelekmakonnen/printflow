@@ -9,7 +9,7 @@
 function initializeDriveFolders() {
     const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
 
-    const folders = ['Active Jobs', 'Completed Jobs', 'Cases', 'Staff', 'Users'];
+    const folders = ['Active Jobs', 'Completed Jobs', 'Cases', 'Staff', 'Users', 'Clients'];
 
     folders.forEach(name => {
         const existing = root.getFoldersByName(name);
@@ -25,15 +25,27 @@ function initializeDriveFolders() {
 }
 
 /**
- * Create a case folder for a new job
+ * Create a case folder for a new job, nested under a Client folder.
+ * Now it creates: Clients -> [Client Name] -> [Job ID]
  */
-function createCaseFolder(jobId) {
+function createCaseFolder(jobId, clientName) {
     const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
-    const casesFolder = getOrCreateSubfolder(root, 'Cases');
-    const jobFolder = casesFolder.createFolder(jobId);
+
+    // Make sure 'Clients' root exists
+    const clientsFolder = getOrCreateSubfolder(root, 'Clients');
+
+    // Sanitize client name for folder naming (avoid weird characters)
+    const safeClientName = (clientName || 'Unknown Client').replace(/[/\\?%*:|"<>]/g, '-').trim();
+
+    // Create/Get the specific Client's folder
+    const specificClientFolder = getOrCreateSubfolder(clientsFolder, safeClientName);
+
+    // Create the Job ID folder inside the Client's folder
+    const jobFolder = specificClientFolder.createFolder(jobId);
 
     // Create sub-folders inside the case
     jobFolder.createFolder('Uploads');
+    jobFolder.createFolder('Invoices'); // Added Invoices folder for automated PDFs
 
     return jobFolder.getUrl();
 }
@@ -52,18 +64,25 @@ function createStaffFolder(displayName) {
 }
 
 /**
- * Move a completed job folder from Cases to Completed Jobs
+ * Move a completed job folder from Clients -> [Client] -> [JobID] to Completed Jobs
+ * Since we moved to Client folders, we need to search across Clients to find the job folder.
  */
 function archiveJobFolder(jobId) {
     const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
-    const casesFolder = getOrCreateSubfolder(root, 'Cases');
+    const clientsFolder = getOrCreateSubfolder(root, 'Clients');
     const completedFolder = getOrCreateSubfolder(root, 'Completed Jobs');
 
-    const folderIter = casesFolder.getFoldersByName(jobId);
-    if (folderIter.hasNext()) {
-        const folder = folderIter.next();
-        completedFolder.addFolder(folder);
-        casesFolder.removeFolder(folder);
+    // We have to find the job folder. It's nested under SOME client folder.
+    const clientIter = clientsFolder.getFolders();
+    while (clientIter.hasNext()) {
+        const clientFolder = clientIter.next();
+        const folderIter = clientFolder.getFoldersByName(jobId);
+        if (folderIter.hasNext()) {
+            const folder = folderIter.next();
+            completedFolder.addFolder(folder);
+            clientFolder.removeFolder(folder);
+            return; // Found and moved
+        }
     }
 }
 
@@ -92,9 +111,9 @@ function handleInitFolders(payload) {
  * Upload a file to a job's Uploads folder
  */
 function uploadFileToJob(jobId, filename, mimeType, base64Data) {
-    const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
-    const casesFolder = getOrCreateSubfolder(root, 'Cases');
-    const jobFolder = getOrCreateSubfolder(casesFolder, jobId);
+    const jobFolder = locateJobFolder(jobId);
+    if (!jobFolder) throw new Error(`Could not locate folder for Job ID: ${jobId}`);
+
     const uploadsFolder = getOrCreateSubfolder(jobFolder, 'Uploads');
 
     const decodedData = Utilities.base64Decode(base64Data);
@@ -110,9 +129,9 @@ function uploadFileToJob(jobId, filename, mimeType, base64Data) {
  * Upload a design sample to a job's Designs folder
  */
 function uploadDesignSample(jobId, filename, mimeType, base64Data) {
-    const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
-    const casesFolder = getOrCreateSubfolder(root, 'Cases');
-    const jobFolder = getOrCreateSubfolder(casesFolder, jobId);
+    const jobFolder = locateJobFolder(jobId);
+    if (!jobFolder) throw new Error(`Could not locate folder for Job ID: ${jobId}`);
+
     const designsFolder = getOrCreateSubfolder(jobFolder, 'Designs');
 
     const decodedData = Utilities.base64Decode(base64Data);
@@ -122,4 +141,31 @@ function uploadDesignSample(jobId, filename, mimeType, base64Data) {
     // Anyone with the link can view (needed for public review page)
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return file.getUrl();
+}
+
+/**
+ * Helper to iterate through Clients and find the generic Job ID folder
+ */
+function locateJobFolder(jobId) {
+    const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
+
+    // First, look in Clients folder
+    const clientsFolder = getOrCreateSubfolder(root, 'Clients');
+    const clientIter = clientsFolder.getFolders();
+    while (clientIter.hasNext()) {
+        const clientFolder = clientIter.next();
+        const folderIter = clientFolder.getFoldersByName(jobId);
+        if (folderIter.hasNext()) {
+            return folderIter.next();
+        }
+    }
+
+    // Fallback: Look in legacy Cases folder just in case
+    const casesFolder = getOrCreateSubfolder(root, 'Cases');
+    const legacyIter = casesFolder.getFoldersByName(jobId);
+    if (legacyIter.hasNext()) {
+        return legacyIter.next();
+    }
+
+    return null;
 }

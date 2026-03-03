@@ -97,8 +97,7 @@ export default function LoginPage() {
               priority
             />
           )}
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, marginTop: '4px' }}>Powered by <strong>PopOut Studios</strong></p>
-          <p>Print Office Operations</p>
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, marginTop: '4px' }}>Print Office Operations</p>
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}
