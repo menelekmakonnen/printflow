@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { getUser, isLoggedIn, logout as apiLogout, getUserRoles, hasAnyRole } from '@/lib/api';
+import { getUser, isLoggedIn, logout as apiLogout, getUserRoles, hasAnyRole, getConfig } from '@/lib/api';
 import { ThemeToggle } from '@/lib/theme';
 import {
     IconDashboard, IconClipboard, IconPlusCircle, IconGear,
     IconUsers, IconBell, IconScroll, IconQueue, IconScissors,
-    IconMenu, IconLogout
+    IconMenu, IconLogout, IconChevronLeft, IconChevronRight,
+    IconDollarSign
 } from '@/lib/icons';
 import Link from 'next/link';
 
@@ -35,8 +36,8 @@ function buildNavSections(roles) {
 
     // Receptionist or Admin can see jobs
     if (roles.some(r => ['receptionist', 'admin', 'super_admin'].includes(r))) {
-        addItem('Operations', { href: '/dashboard/jobs', icon: IconClipboard, label: 'All Jobs' });
         addItem('Operations', { href: '/dashboard/jobs/new', icon: IconPlusCircle, label: 'New Job' });
+        addItem('Operations', { href: '/dashboard/jobs', icon: IconClipboard, label: 'All Jobs' });
     }
 
     // Designer, finisher, admin can see queue
@@ -44,8 +45,14 @@ function buildNavSections(roles) {
         addItem('Operations', { href: '/dashboard/queue', icon: IconQueue, label: 'Production Queue' });
     }
 
+    // Receptionist, Admin, Super Admin can manage Stock
+    if (roles.some(r => ['receptionist', 'admin', 'super_admin'].includes(r))) {
+        addItem('Operations', { href: '/dashboard/inventory', icon: IconScissors, label: 'Stock & Inventory' });
+    }
+
     // Admin/Super Admin management
     if (roles.some(r => ['admin', 'super_admin'].includes(r))) {
+        addItem('Management', { href: '/dashboard/accounting', icon: IconDollarSign, label: 'Accounting' });
         addItem('Management', { href: '/dashboard/users', icon: IconUsers, label: 'User Management' });
         addItem('Management', { href: '/dashboard/notifications', icon: IconBell, label: 'Notification Log' });
     }
@@ -81,6 +88,8 @@ export default function DashboardLayout({ children }) {
     const pathname = usePathname();
     const [user, setUserState] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [systemLogo, setSystemLogo] = useState(null);
 
     useEffect(() => {
         if (!isLoggedIn()) {
@@ -88,6 +97,14 @@ export default function DashboardLayout({ children }) {
             return;
         }
         setUserState(getUser());
+
+        async function fetchLogo() {
+            const res = await getConfig();
+            if (res.success && res.data.logo_base64) {
+                setSystemLogo(res.data.logo_base64);
+            }
+        }
+        fetchLogo();
     }, [router]);
 
     function handleLogout() {
@@ -119,27 +136,45 @@ export default function DashboardLayout({ children }) {
                 onClick={() => setSidebarOpen(false)}
             />
 
-            <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-                <div className="sidebar-header">
-                    <div className="sidebar-brand">PrintFlow</div>
-                    <div className="sidebar-role">{formatRoles(user.roles || user.role)}</div>
+            <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+                <button
+                    className="sidebar-toggle-handle"
+                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    aria-label="Toggle Sidebar"
+                >
+                    {sidebarCollapsed ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
+                </button>
+
+                <div className="sidebar-header" style={{ minHeight: '80px', justifyContent: 'center' }}>
+                    {systemLogo && !sidebarCollapsed ? (
+                        <Link href="/dashboard" style={{ display: 'block', textAlign: 'center', width: '100%' }}>
+                            <img src={systemLogo} alt="Logo" style={{ maxHeight: '44px', maxWidth: '100%', objectFit: 'contain' }} />
+                        </Link>
+                    ) : (
+                        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+                            <div className="sidebar-brand">{sidebarCollapsed ? 'PF' : 'PrintFlow'}</div>
+                        </Link>
+                    )}
+                    {!sidebarCollapsed && <div className="sidebar-role">{formatRoles(user.roles || user.role)}</div>}
                 </div>
 
                 <nav className="sidebar-nav">
                     {navSections.map((section, si) => (
                         <div key={si}>
-                            <div className="nav-section-label">{section.section}</div>
+                            {!sidebarCollapsed && <div className="nav-section-label">{section.section}</div>}
+                            {sidebarCollapsed && <div className="nav-section-divider" />}
                             {section.items.map(item => {
                                 const NavIcon = item.icon;
                                 return (
                                     <Link
                                         key={item.href}
                                         href={item.href}
-                                        className={`nav-link ${pathname === item.href ? 'active' : ''}`}
+                                        className={`nav-link ${pathname === item.href ? 'active' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}
                                         onClick={() => setSidebarOpen(false)}
+                                        title={sidebarCollapsed ? item.label : undefined}
                                     >
                                         <span className="nav-link-icon"><NavIcon size={18} /></span>
-                                        <span>{item.label}</span>
+                                        {!sidebarCollapsed && <span>{item.label}</span>}
                                     </Link>
                                 );
                             })}
@@ -158,14 +193,15 @@ export default function DashboardLayout({ children }) {
                     <button
                         className="btn btn-ghost btn-full"
                         onClick={handleLogout}
-                        style={{ marginTop: '8px', fontSize: '0.8125rem', gap: '6px' }}
+                        style={{ marginTop: '8px', fontSize: '0.8125rem', gap: '6px', padding: sidebarCollapsed ? '10px 0' : '10px 20px' }}
+                        title={sidebarCollapsed ? 'Sign Out' : undefined}
                     >
-                        <IconLogout size={16} /> Sign Out
+                        <IconLogout size={16} /> {!sidebarCollapsed && 'Sign Out'}
                     </button>
                 </div>
             </aside>
 
-            <main className="main-content">
+            <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
                 <header className="topbar">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <button

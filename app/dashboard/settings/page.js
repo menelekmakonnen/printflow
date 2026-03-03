@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getConfig, updateConfig, getUser, hasAnyRole } from '@/lib/api';
 import { IconPlus, IconX, IconGear, IconInfo } from '@/lib/icons';
+import { useCallback } from 'react';
 
 export default function SettingsPage() {
     const [config, setConfig] = useState(null);
@@ -12,21 +13,23 @@ export default function SettingsPage() {
     const [message, setMessage] = useState({ type: '', text: '' });
     const [newType, setNewType] = useState('');
     const [companyName, setCompanyName] = useState('');
+    const [logoBase64, setLogoBase64] = useState('');
 
-    useEffect(() => {
-        setUserState(getUser());
-        loadConfig();
-    }, []);
-
-    async function loadConfig() {
+    const loadConfig = useCallback(async () => {
         setLoading(true);
         const res = await getConfig();
         if (res.success) {
             setConfig(res.data);
             setCompanyName(res.data.company_name || 'PopOut Studios');
+            setLogoBase64(res.data.logo_base64 || '');
         }
         setLoading(false);
-    }
+    }, []);
+
+    useEffect(() => {
+        setUserState(getUser());
+        loadConfig();
+    }, [loadConfig]);
 
     async function handleSaveCompany() {
         if (!companyName.trim()) return;
@@ -41,6 +44,33 @@ export default function SettingsPage() {
             setMessage({ type: 'error', text: res.error });
         }
         setSaving(false);
+    }
+
+    async function handleLogoUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 500 * 1024) { // 500KB limit to be safe for Google Sheets
+            setMessage({ type: 'error', text: 'Logo image must be less than 500KB.' });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64Data = reader.result;
+            setSaving(true);
+            setMessage({ type: '', text: '' });
+
+            const res = await updateConfig({ logo_base64: base64Data });
+            if (res.success) {
+                setMessage({ type: 'success', text: 'Logo uploaded successfully' });
+                setLogoBase64(base64Data);
+            } else {
+                setMessage({ type: 'error', text: res.error });
+            }
+            setSaving(false);
+        };
+        reader.readAsDataURL(file);
     }
 
     async function handleAddType() {
@@ -111,6 +141,43 @@ export default function SettingsPage() {
                     <button className="btn btn-primary" onClick={handleSaveCompany} disabled={saving}>
                         {saving ? 'Saving...' : 'Save'}
                     </button>
+                </div>
+            </div>
+
+            {/* System Logo */}
+            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>System Logo</h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
+                    Upload a custom logo to display on the login page and dashboard. Recommended height: 60px. Max size: 500KB.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xl)' }}>
+                    <div style={{
+                        width: '220px', height: '60px',
+                        border: '1px dashed var(--color-border)',
+                        borderRadius: 'var(--radius-sm)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'var(--color-bg-secondary)',
+                        overflow: 'hidden'
+                    }}>
+                        {logoBase64 ? (
+                            <img src={logoBase64} alt="Custom Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        ) : (
+                            <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>No Logo Uploaded</span>
+                        )}
+                    </div>
+                    <div>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            disabled={saving}
+                            style={{ display: 'none' }}
+                            id="logo-upload"
+                        />
+                        <label htmlFor="logo-upload" className="btn btn-primary" style={{ cursor: 'pointer' }}>
+                            {saving ? 'Uploading...' : 'Upload New Logo'}
+                        </label>
+                    </div>
                 </div>
             </div>
 

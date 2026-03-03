@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
     getJob, getUser, approveJob, receiveJob,
-    processingComplete, completeJob, getNotifications, hasAnyRole
+    processingComplete, completeJob, getNotifications, hasAnyRole,
+    getInventory, deductInventory
 } from '@/lib/api';
 import {
     IconArrowLeft, IconTicket, IconCheckCircle, IconWrench,
@@ -41,6 +42,12 @@ export default function JobDetailPage() {
     const [showTicket, setShowTicket] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
 
+    // Inventory usage state
+    const [inventory, setInventory] = useState([]);
+    const [showMaterialModal, setShowMaterialModal] = useState(false);
+    const [materialForm, setMaterialForm] = useState({ item_id: '', quantity: 1 });
+    const [deductLoading, setDeductLoading] = useState(false);
+
     const loadJob = useCallback(async () => {
         setLoading(true);
         const res = await getJob(jobId);
@@ -54,12 +61,47 @@ export default function JobDetailPage() {
             }
         }
         setLoading(false);
+
+        // Also fetch inventory if user can use materials
+        const u = getUser();
+        const uRoles = (u?.roles || u?.role || '').split(',').map(r => r.trim());
+        if (uRoles.some(r => ['admin', 'super_admin', 'designer', 'finisher'].includes(r))) {
+            const invRes = await getInventory('all');
+            if (invRes.success) {
+                // filter out ones with 0 stock or just show all? Let's show all so they can deduct into negatives
+                setInventory(invRes.data);
+            }
+        }
     }, [jobId]);
 
     useEffect(() => {
         setUserState(getUser());
         loadJob();
     }, [loadJob]);
+
+    async function handleDeductMaterial(e) {
+        e.preventDefault();
+        if (!materialForm.item_id || materialForm.quantity < 1) return;
+
+        setDeductLoading(true);
+        setMessage({ type: '', text: '' });
+
+        const res = await deductInventory(jobId, [{
+            item_id: materialForm.item_id,
+            quantity: materialForm.quantity
+        }]);
+
+        if (res.success) {
+            setMessage({ type: 'success', text: 'Material usage recorded successfully.' });
+            setShowMaterialModal(false);
+            setMaterialForm({ item_id: '', quantity: 1 });
+            // Optionally reload job if we want to show it in the log
+            await loadJob();
+        } else {
+            setMessage({ type: 'error', text: res.error || 'Failed to record material usage' });
+        }
+        setDeductLoading(false);
+    }
 
     async function handleAction(actionFn, actionName) {
         if (!confirm(`Are you sure you want to ${actionName}?`)) return;
@@ -173,6 +215,19 @@ export default function JobDetailPage() {
                     </button>
                 )}
             </div>
+
+            {/* RECORD MATERIALS BUTTON */}
+            {(job.status === 'in_progress' || job.status === 'finishing') && (hasAnyRole(['designer', 'finisher']) || isAdmin) && (
+                <div style={{ marginBottom: 'var(--space-lg)' }}>
+                    <button
+                        className="btn btn-ghost"
+                        onClick={() => setShowMaterialModal(true)}
+                        style={{ gap: '6px', color: 'var(--color-accent)', fontWeight: 600, border: '1px solid var(--color-accent)', background: 'rgba(0,0,0,0.02)' }}
+                    >
+                        <IconScissors size={18} /> Record Material Usage
+                    </button>
+                </div>
+            )}
 
             {/* Details Grid */}
             <div className="detail-grid">
@@ -323,6 +378,65 @@ export default function JobDetailPage() {
                         <button className="btn btn-primary" onClick={() => window.print()} style={{ gap: '6px' }}>
                             <IconPrinter size={16} /> Print Ticket
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Record Material Modal */}
+            {showMaterialModal && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '450px' }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Record Material Usage</h3>
+                            <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowMaterialModal(false)}>
+                                <IconXCircle size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <form onSubmit={handleDeductMaterial}>
+                                <div className="form-group">
+                                    <label className="form-label">Select Material</label>
+                                    <select
+                                        className="form-input"
+                                        required
+                                        value={materialForm.item_id}
+                                        onChange={e => setMaterialForm(prev => ({ ...prev, item_id: e.target.value }))}
+                                    >
+                                        <option value="" disabled>Select an item...</option>
+                                        {inventory.map(inv => (
+                                            <option key={inv.item_id} value={inv.item_id}>
+                                                {inv.item_name} ({inv.quantity_in_stock} {inv.unit} in stock)
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="form-group" style={{ marginTop: 'var(--space-md)' }}>
+                                    <label className="form-label">Quantity Used</label>
+                                    <input
+                                        type="number"
+                                        className="form-input"
+                                        required
+                                        min="0.01"
+                                        step="0.01"
+                                        value={materialForm.quantity}
+                                        onChange={e => setMaterialForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                                    />
+                                    <p style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                        This amount will be deducted from inventory.
+                                    </p>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 'var(--space-xl)' }}>
+                                    <button type="button" className="btn btn-ghost" onClick={() => setShowMaterialModal(false)} disabled={deductLoading}>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="btn btn-primary" disabled={deductLoading || !materialForm.item_id}>
+                                        {deductLoading ? 'Recording...' : 'Deduct Material'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </div>
             )}

@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { login as apiLogin, setToken, setUser } from '@/lib/api';
+import { login as apiLogin, setToken, setUser, getConfig } from '@/lib/api';
 import { ThemeToggle, useTheme } from '@/lib/theme';
+import { useEffect } from 'react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,6 +14,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [systemLogo, setSystemLogo] = useState(null);
+  const [companyName, setCompanyName] = useState('PopOut Studios');
+
+  useEffect(() => {
+    async function loadConfig() {
+      const res = await getConfig();
+      if (res.success) {
+        if (res.data.logo_base64) setSystemLogo(res.data.logo_base64);
+        if (res.data.company_name) setCompanyName(res.data.company_name);
+      }
+    }
+    loadConfig();
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -42,14 +56,22 @@ export default function LoginPage() {
       </div>
       <div className="login-card">
         <div className="login-logo">
-          <Image
-            src={theme === 'dark' ? '/images/logo-light.png' : '/images/logo-dark.png'}
-            alt="PopOut Studios"
-            width={220}
-            height={60}
-            style={{ marginBottom: '8px', objectFit: 'contain' }}
-            priority
-          />
+          {systemLogo ? (
+            <img
+              src={systemLogo}
+              alt={companyName}
+              style={{ maxHeight: '60px', maxWidth: '220px', marginBottom: '8px', objectFit: 'contain' }}
+            />
+          ) : (
+            <Image
+              src={theme === 'dark' ? '/images/logo-light.png' : '/images/logo-dark.png'}
+              alt={companyName}
+              width={220}
+              height={60}
+              style={{ marginBottom: '8px', objectFit: 'contain' }}
+              priority
+            />
+          )}
           <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, marginTop: '4px' }}>Powered by <strong>PrintFlow</strong></p>
           <p>Print Office Operations</p>
         </div>

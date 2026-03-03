@@ -13,6 +13,7 @@ const SHEET_SESSIONS = 'Sessions';
 const SHEET_NOTIFICATIONS = 'Notification Log';
 const SHEET_CONFIG = 'Config';
 const SHEET_ACTIVITY = 'Activity Log';
+const SHEET_INVENTORY = 'Inventory';
 
 /**
  * Get the main spreadsheet

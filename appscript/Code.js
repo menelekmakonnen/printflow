@@ -94,7 +94,14 @@ function routeAction(action, payload) {
         'getActivityLog': handleGetActivityLog,
 
         // Dashboard stats
-        'getDashboardStats': handleGetDashboardStats
+        'getDashboardStats': handleGetDashboardStats,
+
+        // Inventory
+        'getInventory': handleGetInventory,
+        'addInventoryItem': handleAddInventoryItem,
+        'updateInventoryItem': handleUpdateInventoryItem,
+        'deleteInventoryItem': handleDeleteInventoryItem,
+        'deductInventory': handleDeductInventory
     };
 
     const handler = routes[action];

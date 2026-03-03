@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getUsers, createUser, updateUser, disableUser, enableUser, getUser, hasAnyRole } from '@/lib/api';
 import { IconPlusCircle, IconX, IconCheckCircle, IconXCircle } from '@/lib/icons';
+import { useCallback } from 'react';
 
 const ALL_ROLES = [
     { key: 'receptionist', label: 'Receptionist', description: 'Receives jobs, manages client info' },
@@ -38,17 +39,18 @@ export default function UsersPage() {
     const [formLoading, setFormLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
 
-    useEffect(() => {
-        setCurrentUser(getUser());
-        loadUsers();
-    }, []);
-
-    async function loadUsers() {
+    const loadUsers = useCallback(async () => {
         setLoading(true);
         const res = await getUsers();
         if (res.success) setUsers(res.data);
         setLoading(false);
-    }
+    }, []);
+
+    useEffect(() => {
+        setCurrentUser(getUser());
+        loadUsers();
+    }, [loadUsers]);
+
 
     function openCreate() {
         setEditingUser(null);
@@ -87,37 +89,41 @@ export default function UsersPage() {
         setFormLoading(true);
         setMessage({ type: '', text: '' });
 
-        let res;
-        if (editingUser) {
-            const payload = {
-                target_username: editingUser.username,
-                display_name: form.display_name,
-                roles: form.roles.join(',')
-            };
-            if (form.password) payload.new_password = form.password;
-            res = await updateUser(payload);
-        } else {
-            if (!form.username || !form.password || !form.display_name) {
-                setMessage({ type: 'error', text: 'All fields are required' });
-                setFormLoading(false);
-                return;
+        try {
+            if (editingUser) {
+                const payload = {
+                    target_username: editingUser.username,
+                    display_name: form.display_name,
+                    roles: form.roles.join(',')
+                };
+                if (form.password) payload.new_password = form.password;
+                res = await updateUser(payload);
+            } else {
+                if (!form.username || !form.password || !form.display_name) {
+                    setMessage({ type: 'error', text: 'All fields are required' });
+                    setFormLoading(false);
+                    return;
+                }
+                res = await createUser({
+                    username: form.username,
+                    password: form.password,
+                    display_name: form.display_name,
+                    roles: form.roles.join(',')
+                });
             }
-            res = await createUser({
-                username: form.username,
-                password: form.password,
-                display_name: form.display_name,
-                roles: form.roles.join(',')
-            });
-        }
 
-        if (res.success) {
-            setMessage({ type: 'success', text: editingUser ? 'User updated' : 'User created' });
-            setShowModal(false);
-            await loadUsers();
-        } else {
-            setMessage({ type: 'error', text: res.error });
+            if (res.success) {
+                setMessage({ type: 'success', text: editingUser ? 'User updated' : 'User created' });
+                setShowModal(false);
+                await loadUsers();
+            } else {
+                setMessage({ type: 'error', text: res.error });
+            }
+        } catch (err) {
+            setMessage({ type: 'error', text: 'Connection failed — please try again.' });
+        } finally {
+            setFormLoading(false);
         }
-        setFormLoading(false);
     }
 
     async function handleToggleStatus(user) {
