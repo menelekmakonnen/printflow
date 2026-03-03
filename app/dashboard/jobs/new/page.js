@@ -41,12 +41,17 @@ export default function NewJobPage() {
     const [showProductPicker, setShowProductPicker] = useState(false);
     const [showCustomItemPicker, setShowCustomItemPicker] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [config, setConfig] = useState(null);
 
     // Load Initial Data
     useEffect(() => {
         async function loadInitialData() {
             // First load config
             const conf = await getConfig();
+            if (conf.success && conf.data) {
+                setConfig(conf.data);
+            }
+
             let defaultTax = 0;
             if (conf.success && conf.data && conf.data.default_est_tax) {
                 defaultTax = Number(conf.data.default_est_tax) || 0;
@@ -533,7 +538,7 @@ export default function NewJobPage() {
                                                     </select>
                                                 </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
-                                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '4px', background: item.design_service ? 'var(--brand-primary)' : 'var(--color-bg-input)', padding: '2px 8px', borderRadius: 'var(--radius-full)', border: `1px solid ${item.design_service ? 'var(--brand-primary)' : 'var(--color-border)'}`, transition: 'all 0.2s', boxShadow: item.design_service ? '0 2px 4px rgba(56, 189, 248, 0.2)' : 'none' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '4px', background: item.design_service ? 'var(--color-accent)' : 'var(--color-bg-input)', padding: '2px 8px', borderRadius: 'var(--radius-full)', border: `1px solid ${item.design_service ? 'var(--color-accent)' : 'var(--color-border)'}`, transition: 'all 0.2s', boxShadow: item.design_service ? '0 2px 4px rgba(99, 102, 241, 0.2)' : 'none' }}>
                                                         <input type="checkbox" checked={item.design_service} onChange={e => {
                                                             const isChecked = e.target.checked;
                                                             updateItemField(i, 'design_service', isChecked);
@@ -569,12 +574,12 @@ export default function NewJobPage() {
 
                                         {/* POPUP / BUBBLE FOR DESIGN NOTES */}
                                         {item.design_service && (
-                                            <div style={{ position: 'relative', marginTop: '2px', marginBottom: '8px', padding: '12px', background: 'rgba(56, 189, 248, 0.05)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', margin: '0 40px 0 16px' }}>
+                                            <div style={{ position: 'relative', marginTop: '2px', marginBottom: '8px', padding: '12px', background: 'var(--color-completed-light)', border: '1px solid var(--color-completed)', borderRadius: 'var(--radius-md)', margin: '0 40px 0 16px' }}>
                                                 <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'var(--color-bg-primary)', borderTop: '1px solid var(--color-border)', borderLeft: '1px solid var(--color-border)', transform: 'rotate(45deg)' }}></div>
-                                                <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'rgba(56, 189, 248, 0.05)', borderTop: '1px solid transparent', borderLeft: '1px solid transparent', transform: 'rotate(45deg)' }}></div>
-                                                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--brand-primary)', margin: '0 0 8px 0' }}>Design Description:</p>
+                                                <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'var(--color-completed-light)', borderTop: '1px solid transparent', borderLeft: '1px solid transparent', transform: 'rotate(45deg)' }}></div>
+                                                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-completed)', margin: '0 0 8px 0' }}>Design Description:</p>
                                                 <textarea
-                                                    style={{ width: '100%', fontSize: '0.8125rem', padding: '8px', background: 'var(--color-bg-input)', border: '1px dashed var(--brand-primary)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', outline: 'none' }}
+                                                    style={{ width: '100%', fontSize: '0.8125rem', padding: '8px', background: 'var(--color-bg-input)', border: '1px dashed var(--color-completed)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', outline: 'none' }}
                                                     rows={2}
                                                     placeholder={`Provide detailed design instructions for ${item.name}...`}
                                                     value={item.design_notes || ''}
@@ -589,8 +594,8 @@ export default function NewJobPage() {
                     </div>
 
                     {/* STANDALONE DESIGN SERVICE */}
-                    <div style={{ marginBottom: 'var(--space-xl)', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-lg)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
+                    <div style={{ marginBottom: 'var(--space-xl)', padding: form.requires_design ? 'var(--space-md)' : '10px 16px', background: form.requires_design ? 'var(--color-bg-secondary)' : 'transparent', border: `1px solid ${form.requires_design ? 'transparent' : 'var(--color-border)'}`, borderRadius: 'var(--radius-lg)', transition: 'all 0.2s' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.requires_design ? 'var(--space-md)' : '0' }}>
                             <div>
                                 <h3 className="card-title" style={{ margin: 0 }}>Standalone Design Service</h3>
                                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>Is this a design-only job without physical products?</p>
@@ -815,16 +820,18 @@ export default function NewJobPage() {
                                         -{'\u20B5'}{Number(calculatedGlobalDiscount).toFixed(2)}
                                     </span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                    <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        Est. Tax: %
-                                        <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
-                                            style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                    </span>
-                                    <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
-                                        {'\u20B5'}{taxAmount.toFixed(2)}
-                                    </span>
-                                </div>
+                                {(config?.enable_tax !== false) && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                        <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            Est. Tax: %
+                                            <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        </span>
+                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
+                                            {'\u20B5'}{taxAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
                                 <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
                                     <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
                                     <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>

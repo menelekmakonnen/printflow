@@ -13,9 +13,8 @@ export default function SettingsPage() {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [newType, setNewType] = useState('');
-    const [companyName, setCompanyName] = useState('');
     const [logoBase64, setLogoBase64] = useState('');
-    const [faviconBase64, setFaviconBase64] = useState('');
+    const [enableTax, setEnableTax] = useState(true);
 
     // --- Crop State ---
     const [cropImageSrc, setCropImageSrc] = useState(null);
@@ -29,9 +28,8 @@ export default function SettingsPage() {
         const res = await getConfig();
         if (res.success) {
             setConfig(res.data);
-            setCompanyName(res.data.company_name || 'PopOut Studios');
             setLogoBase64(res.data.logo_base64 || '');
-            setFaviconBase64(res.data.favicon_base64 || '');
+            setEnableTax(res.data.enable_tax !== false); // Default true if undefined
         }
         setLoading(false);
     }, []);
@@ -41,15 +39,14 @@ export default function SettingsPage() {
         loadConfig();
     }, [loadConfig]);
 
-    async function handleSaveCompany() {
-        if (!companyName.trim()) return;
+    async function handleToggleTax(newVal) {
         setSaving(true);
         setMessage({ type: '', text: '' });
 
-        const res = await updateConfig({ company_name: companyName });
+        const res = await updateConfig({ enable_tax: newVal });
         if (res.success) {
-            setMessage({ type: 'success', text: 'Company name updated' });
-            await loadConfig();
+            setMessage({ type: 'success', text: `Estimated Tax ${newVal ? 'Enabled' : 'Disabled'}` });
+            setEnableTax(newVal);
         } else {
             setMessage({ type: 'error', text: res.error });
         }
@@ -185,29 +182,15 @@ export default function SettingsPage() {
                 </div>
             )}
 
-            {/* Company Name */}
-            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
-                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Company Name</h3>
-                <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                    <input type="text" className="form-input" value={companyName}
-                        onChange={e => setCompanyName(e.target.value)} style={{ flex: 1 }} />
-                    <button className="btn btn-primary" onClick={handleSaveCompany} disabled={saving}>
-                        {saving ? 'Saving...' : 'Save'}
-                    </button>
-                </div>
-            </div>
-
             {/* System Logo */}
             <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
-                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>System Logos</h3>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Dashboard & Login Branding</h3>
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
-                    Upload standard (light background), dark mode (dark background) logos, and a square Favicon. Max 500KB.
+                    Upload standard (light background) and dark mode (dark background) logos. Max 500KB.
                 </p>
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xl)' }}>
-                    {/* Unified Logo */}
                     <div style={{ flex: '1 1 300px' }}>
-                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Global Company Logo</h4>
                         <div style={{
                             border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
                             display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
@@ -232,100 +215,94 @@ export default function SettingsPage() {
                             </div>
                         </div>
                     </div>
-
-                    {/* System Favicon */}
-                    <div style={{ flex: '1 1 300px' }}>
-                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>System Favicon</h4>
-                        <div style={{
-                            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
-                            display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
-                            background: '#f8fafc'
-                        }}>
-                            <div style={{
-                                width: '64px', height: '64px', background: '#e2e8f0', borderRadius: '8px',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                                flexShrink: 0, boxShadow: 'var(--shadow-sm)'
-                            }}>
-                                {faviconBase64 ? (
-                                    <img src={faviconBase64} alt="Favicon" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                                ) : (
-                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>None</span>
-                                )}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <input type="file" id="favicon-upload" accept="image/*" style={{ display: 'none' }} onChange={handleFaviconUpload} disabled={saving} />
-                                <label htmlFor="favicon-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer' }}>
-                                    {saving ? 'Uploading...' : 'Choose Square Element'}
-                                </label>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
-
-
-            {/* Currency */}
+            {/* Financial Config */}
             <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
-                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Currency</h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                    <div style={{ fontSize: '2rem', fontWeight: 700 }}>{'\u20B5'}</div>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Financial Settings</h3>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 'var(--space-md)', borderBottom: '1px solid var(--color-border)', marginBottom: 'var(--space-md)' }}>
                     <div>
-                        <div style={{ fontWeight: 600 }}>Ghanaian Cedi (GHS)</div>
+                        <div style={{ fontWeight: 600 }}>Enable Estimated Tax</div>
                         <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-                            Default currency for all job amounts
+                            Show the Est. Tax block on Quotes and Invoices by default.
+                        </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                        <input
+                            type="checkbox"
+                            checked={enableTax}
+                            onChange={(e) => handleToggleTax(e.target.checked)}
+                            disabled={saving}
+                            style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--color-accent)' }}
+                        />
+                    </label>
+                </div>
+
+
+
+                {/* Currency */}
+                <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                    <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Currency</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                        <div style={{ fontSize: '2rem', fontWeight: 700 }}>{'\u20B5'}</div>
+                        <div>
+                            <div style={{ fontWeight: 600 }}>Ghanaian Cedi (GHS)</div>
+                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
+                                Default currency for all job amounts
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                {/* System Info */}
+                <details className="card" style={{ cursor: 'pointer' }}>
+                    <summary className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
+                        <IconInfo size={16} /> System Information
+                    </summary>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: 'var(--space-lg)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px' }}>
+                            <span style={{ fontWeight: 600 }}>Platform:</span><span>PrintFlow MVP</span>
+                            <span style={{ fontWeight: 600 }}>Backend:</span><span>Google Apps Script</span>
+                            <span style={{ fontWeight: 600 }}>Database:</span><span>Google Sheets</span>
+                            <span style={{ fontWeight: 600 }}>Notifications:</span><span>Gmail + Calendar</span>
+                            <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
+                            <span style={{ fontWeight: 600 }}>Developed By:</span><span>ICUNI Labs</span>
+                        </div>
+                    </div>
+                </details>
+
+                {/* React Image Crop Modal overlay */}
+                {cropImageSrc && (
+                    <div className="modal-overlay">
+                        <div className="modal modal-content" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
+                            <div className="modal-header">
+                                <h2>Crop {cropType === 'logo' ? 'Logo' : 'Favicon'}</h2>
+                                <button className="btn-icon" onClick={() => setCropImageSrc(null)}><IconX size={20} /></button>
+                            </div>
+                            <div className="modal-body" style={{ flex: 1, overflow: 'auto', background: '#000', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', justifyContent: 'center' }}>
+                                <ReactCrop
+                                    crop={crop}
+                                    onChange={(_, percentCrop) => setCrop(percentCrop)}
+                                    onComplete={(c) => setCompletedCrop(c)}
+                                    aspect={cropType === 'favicon' ? 1 : undefined}
+                                >
+                                    <img
+                                        ref={imgRef}
+                                        src={cropImageSrc}
+                                        alt="Crop target"
+                                        style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
+                                    />
+                                </ReactCrop>
+                            </div>
+                            <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                                <button className="btn btn-secondary" onClick={() => setCropImageSrc(null)}>Cancel</button>
+                                <button className="btn btn-primary" onClick={handleCropComplete}>Apply Crop</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-
-            {/* System Info */}
-            <details className="card" style={{ cursor: 'pointer' }}>
-                <summary className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
-                    <IconInfo size={16} /> System Information
-                </summary>
-                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: 'var(--space-lg)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px' }}>
-                        <span style={{ fontWeight: 600 }}>Platform:</span><span>PrintFlow MVP</span>
-                        <span style={{ fontWeight: 600 }}>Backend:</span><span>Google Apps Script</span>
-                        <span style={{ fontWeight: 600 }}>Database:</span><span>Google Sheets</span>
-                        <span style={{ fontWeight: 600 }}>Notifications:</span><span>Gmail + Calendar</span>
-                        <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
-                        <span style={{ fontWeight: 600 }}>Developed By:</span><span>ICUNI Labs</span>
-                    </div>
-                </div>
-            </details>
-
-            {/* React Image Crop Modal overlay */}
-            {cropImageSrc && (
-                <div className="modal-overlay">
-                    <div className="modal modal-content" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
-                        <div className="modal-header">
-                            <h2>Crop {cropType === 'logo' ? 'Logo' : 'Favicon'}</h2>
-                            <button className="btn-icon" onClick={() => setCropImageSrc(null)}><IconX size={20} /></button>
-                        </div>
-                        <div className="modal-body" style={{ flex: 1, overflow: 'auto', background: '#000', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', justifyContent: 'center' }}>
-                            <ReactCrop
-                                crop={crop}
-                                onChange={(_, percentCrop) => setCrop(percentCrop)}
-                                onComplete={(c) => setCompletedCrop(c)}
-                                aspect={cropType === 'favicon' ? 1 : undefined}
-                            >
-                                <img
-                                    ref={imgRef}
-                                    src={cropImageSrc}
-                                    alt="Crop target"
-                                    style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
-                                />
-                            </ReactCrop>
-                        </div>
-                        <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                            <button className="btn btn-secondary" onClick={() => setCropImageSrc(null)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={handleCropComplete}>Apply Crop</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+            );
 }

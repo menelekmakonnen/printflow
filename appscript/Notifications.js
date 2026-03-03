@@ -43,9 +43,10 @@ const NOTIFICATION_MESSAGES = {
                 <td style="text-align: right; padding: 12px 8px 4px; font-weight: 600;">₵{DISC_SUBTOTAL}</td>
               </tr>
               <tr>
-                <td colspan="3" style="text-align: right; padding: 4px 8px; font-weight: 600; color: #64748b;">Tax ({TAX_PCT}%)</td>
-                <td style="text-align: right; padding: 4px 8px; font-weight: 600;">₵{TAX_AMT}</td>
+                <td colspan="3" style="text-align: right; padding: 12px 8px 4px; font-weight: 600; color: #64748b;">Subtotal</td>
+                <td style="text-align: right; padding: 12px 8px 4px; font-weight: 600;">₵{DISC_SUBTOTAL}</td>
               </tr>
+              {TAX_ROW}
               <tr>
                 <td colspan="3" style="text-align: right; padding: 8px; font-weight: bold; font-size: 16px; color: #1e3a5f;">Total</td>
                 <td style="text-align: right; padding: 8px; font-weight: bold; font-size: 16px; color: #1e3a5f;">₵{TOTAL}</td>
@@ -267,3 +268,109 @@ function handleGetNotifications(payload) {
 
   return jsonResponse(notifications);
 }
+
+/**
+ * Send an invoice email immediately upon job creation
+ */
+function sendInvoiceEmail(job, items) {
+  if (!job.client_email) return;
+
+  const template = NOTIFICATION_MESSAGES['invoice'];
+  if (!template) return;
+
+  // Resolve config for enable_tax
+  let enableTax = false; // Default to false
+  try {
+    const configs = getSheetData(SHEET_CONFIG);
+    const taxConf = configs.find(c => c.config_key === 'enable_tax');
+    if (taxConf) {
+      enableTax = taxConf.config_value !== 'false' && taxConf.config_value !== false;
+    }
+  } catch (e) {
+    Logger.log('Tax config error: ' + e);
+  }
+
+  let itemsHtml = '';
+  let runningSub = 0;
+
+  if (items && Array.isArray(items)) {
+    items.forEach(it => {
+      const qty = Number(it.quantity) || 1;
+      const rate = Number(it.rate) || 0;
+      let itemTotal = qty * rate;
+
+      // Extremely simplified calculation for the table (just visual approx)
+      const cost = Number(it.cost) || 0;
+      if (it.costType === 'percent') itemTotal += (itemTotal * (cost / 100)); else itemTotal += cost;
+
+      const dCost = Number(it.design_cost) || 0;
+      if (it.design_service) {
+        if (it.design_costType === 'percent') itemTotal += (itemTotal * (dCost / 100)); else itemTotal += dCost;
+      }
+
+      const disc = Number(it.discount) || 0;
+      if (it.discountType === 'percent') itemTotal -= (itemTotal * (disc / 100)); else itemTotal -= disc;
+
+      runningSub += itemTotal;
+
+      itemsHtml += `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">
+            <strong>${it.name || 'Item'}</strong>
+            ${it.design_service ? '<br/><span style="font-size:11px;color:#3b82f6;">+ Design Services</span>' : ''}
+          </td>
+          <td style="text-align: right; padding: 8px; border-bottom: 1px solid #f1f5f9;">₵${rate.toFixed(2)}</td>
+          <td style="text-align: right; padding: 8px; border-bottom: 1px solid #f1f5f9;">${qty}</td>
+          <td style="text-align: right; padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight:500;">₵${itemTotal.toFixed(2)}</td>
+        </tr>
+      `;
+    });
+  }
+
+  if (!itemsHtml) {
+    itemsHtml = '<tr><td colspan="4" style="padding: 8px; text-align: center; color: #64748b;">Custom Quote/Order. See Job Description formatting.</td></tr>';
+  }
+
+  // Figure out tax row based on sub-calc and global total
+  const finalTotal = Number(job.total_amount) || 0;
+  const taxPct = Number(job._tax_pct) || 0;
+
+  let taxRowHtml = '';
+  if (enableTax && taxPct > 0) {
+    // We reverse engineer the tax amount by splitting the difference roughly if needed, 
+    // or just assume standard deduction since the AppScript doesn't have the global discounts natively.
+    const approximateTaxAmt = (runningSub * (taxPct / 100));
+    taxRowHtml = `
+      <tr>
+        <td colspan="3" style="text-align: right; padding: 4px 8px; font-weight: 600; color: #64748b;">Tax (${taxPct}%)</td>
+        <td style="text-align: right; padding: 4px 8px; font-weight: 600;">₵${approximateTaxAmt.toFixed(2)}</td>
+      </tr>
+    `;
+  }
+
+  const replacements = {
+    '{JOB_ID}': job.job_id,
+    '{CLIENT_NAME}': job.client_name,
+    '{JOB_TYPE}': (job.job_type || '').replace(/_/g, ' '),
+    '{ITEMS_HTML}': itemsHtml,
+    '{DISC_SUBTOTAL}': runningSub.toFixed(2),
+    '{TAX_ROW}': taxRowHtml,
+    '{TOTAL}': finalTotal.toFixed(2)
+  };
+
+  let subject = template.subject;
+  let body = template.body;
+
+  Object.entries(replacements).forEach(([key, val]) => {
+    subject = subject.split(key).join(val);
+    body = body.split(key).join(val);
+  });
+
+  try {
+    GmailApp.sendEmail(job.client_email, subject, '', { htmlBody: body });
+    logNotification(job.job_id, 'email', 'invoice', job.client_email, 'sent', '');
+  } catch (e) {
+    logNotification(job.job_id, 'email', 'invoice', job.client_email, 'failed', e.message);
+  }
+}
+
