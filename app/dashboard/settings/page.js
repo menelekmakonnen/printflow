@@ -239,70 +239,69 @@ export default function SettingsPage() {
                         />
                     </label>
                 </div>
+            </div>
 
-
-
-                {/* Currency */}
-                <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
-                    <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Currency</h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                        <div style={{ fontSize: '2rem', fontWeight: 700 }}>{'\u20B5'}</div>
-                        <div>
-                            <div style={{ fontWeight: 600 }}>Ghanaian Cedi (GHS)</div>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-                                Default currency for all job amounts
-                            </div>
+            {/* Currency */}
+            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Currency</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                    <div style={{ fontSize: '2rem', fontWeight: 700 }}>{'\u20B5'}</div>
+                    <div>
+                        <div style={{ fontWeight: 600 }}>Ghanaian Cedi (GHS)</div>
+                        <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
+                            Default currency for all job amounts
                         </div>
                     </div>
                 </div>
-
-                {/* System Info */}
-                <details className="card" style={{ cursor: 'pointer' }}>
-                    <summary className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
-                        <IconInfo size={16} /> System Information
-                    </summary>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: 'var(--space-lg)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px' }}>
-                            <span style={{ fontWeight: 600 }}>Platform:</span><span>PrintFlow MVP</span>
-                            <span style={{ fontWeight: 600 }}>Backend:</span><span>Google Apps Script</span>
-                            <span style={{ fontWeight: 600 }}>Database:</span><span>Google Sheets</span>
-                            <span style={{ fontWeight: 600 }}>Notifications:</span><span>Gmail + Calendar</span>
-                            <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
-                            <span style={{ fontWeight: 600 }}>Developed By:</span><span>ICUNI Labs</span>
-                        </div>
-                    </div>
-                </details>
-
-                {/* React Image Crop Modal overlay */}
-                {cropImageSrc && (
-                    <div className="modal-overlay">
-                        <div className="modal modal-content" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
-                            <div className="modal-header">
-                                <h2>Crop {cropType === 'logo' ? 'Logo' : 'Favicon'}</h2>
-                                <button className="btn-icon" onClick={() => setCropImageSrc(null)}><IconX size={20} /></button>
-                            </div>
-                            <div className="modal-body" style={{ flex: 1, overflow: 'auto', background: '#000', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', justifyContent: 'center' }}>
-                                <ReactCrop
-                                    crop={crop}
-                                    onChange={(_, percentCrop) => setCrop(percentCrop)}
-                                    onComplete={(c) => setCompletedCrop(c)}
-                                    aspect={cropType === 'favicon' ? 1 : undefined}
-                                >
-                                    <img
-                                        ref={imgRef}
-                                        src={cropImageSrc}
-                                        alt="Crop target"
-                                        style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
-                                    />
-                                </ReactCrop>
-                            </div>
-                            <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                                <button className="btn btn-secondary" onClick={() => setCropImageSrc(null)}>Cancel</button>
-                                <button className="btn btn-primary" onClick={handleCropComplete}>Apply Crop</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
-            );
+
+            {/* System Info */}
+            <details className="card" style={{ cursor: 'pointer' }}>
+                <summary className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
+                    <IconInfo size={16} /> System Information
+                </summary>
+                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: 'var(--space-lg)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px' }}>
+                        <span style={{ fontWeight: 600 }}>Platform:</span><span>PrintFlow MVP</span>
+                        <span style={{ fontWeight: 600 }}>Backend:</span><span>Google Apps Script</span>
+                        <span style={{ fontWeight: 600 }}>Database:</span><span>Google Sheets</span>
+                        <span style={{ fontWeight: 600 }}>Notifications:</span><span>Gmail + Calendar</span>
+                        <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
+                        <span style={{ fontWeight: 600 }}>Developed By:</span><span>ICUNI Labs</span>
+                    </div>
+                </div>
+            </details>
+
+            {/* React Image Crop Modal overlay */}
+            {cropImageSrc && (
+                <div className="modal-overlay">
+                    <div className="modal modal-content" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
+                        <div className="modal-header">
+                            <h2>Crop {cropType === 'logo' ? 'Logo' : 'Favicon'}</h2>
+                            <button className="btn-icon" onClick={() => setCropImageSrc(null)}><IconX size={20} /></button>
+                        </div>
+                        <div className="modal-body" style={{ flex: 1, overflow: 'auto', background: '#000', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', justifyContent: 'center' }}>
+                            <ReactCrop
+                                crop={crop}
+                                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                                onComplete={(c) => setCompletedCrop(c)}
+                                aspect={cropType === 'favicon' ? 1 : undefined}
+                            >
+                                <img
+                                    ref={imgRef}
+                                    src={cropImageSrc}
+                                    alt="Crop target"
+                                    style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
+                                />
+                            </ReactCrop>
+                        </div>
+                        <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button className="btn btn-secondary" onClick={() => setCropImageSrc(null)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleCropComplete}>Apply Crop</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }
