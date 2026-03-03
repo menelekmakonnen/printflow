@@ -42,6 +42,7 @@ export default function NewJobPage() {
     const [showCustomItemPicker, setShowCustomItemPicker] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [config, setConfig] = useState(null);
+    const [designServiceMeta, setDesignServiceMeta] = useState(null);
 
     // Load Initial Data
     useEffect(() => {
@@ -95,18 +96,27 @@ export default function NewJobPage() {
             const res = await getProducts('Active');
             if (res.success) {
                 const groups = {};
+                let foundDesignMeta = null;
                 res.data.forEach(p => {
                     const t = p.product_type || 'Other';
                     if (!groups[t]) groups[t] = [];
-                    groups[t].push({
+
+                    const itemData = {
                         id: p.item_id,
                         name: p.item_name,
                         rate: Number(p.rate),
                         unit: p.usage_unit || p.unit_name || 'pcs',
                         description: p.description
-                    });
+                    };
+
+                    if (p.item_name && p.item_name.toLowerCase() === 'production design charge') {
+                        foundDesignMeta = itemData;
+                    }
+
+                    groups[t].push(itemData);
                 });
                 setProductGroups(groups);
+                if (foundDesignMeta) setDesignServiceMeta(foundDesignMeta);
             }
 
             setLoading(false);
@@ -121,8 +131,13 @@ export default function NewJobPage() {
     const lineItemsWithTotals = lineItems.map(item => {
         const itemBase = Number(item.rate || 0) * Number(item.quantity || 1);
         const itemCost = item.costType === 'percent' ? itemBase * (Number(item.cost || 0) / 100) : Number(item.cost || 0);
-        const rawDesignCost = item.design_service ? Number(item.design_cost || 0) : 0;
-        const designCost = (item.design_service && item.design_costType === 'percent') ? itemBase * (rawDesignCost / 100) : rawDesignCost;
+
+        // Item Level Design Cost calculation
+        const baseDesignRate = item.design_service ? (designServiceMeta ? designServiceMeta.rate : 0) : 0;
+        const designMod = item.design_service ? Number(item.design_cost || 0) : 0;
+        const computedDesignMod = (item.design_service && item.design_costType === 'percent') ? baseDesignRate * (designMod / 100) : designMod;
+        const designCost = item.design_service ? (baseDesignRate + computedDesignMod) : 0;
+
         const baseWithCost = itemBase + itemCost + designCost;
         const itemDiscount = item.discountType === 'percent' ? baseWithCost * (Number(item.discount || 0) / 100) : Number(item.discount || 0);
         const itemTotal = Math.max(0, baseWithCost - itemDiscount);
@@ -131,13 +146,13 @@ export default function NewJobPage() {
 
     const subtotalProducts = lineItemsWithTotals.reduce((sum, item) => sum + item.itemTotal, 0);
 
-    const standaloneDesignBase = form.requires_design ? Number(form.standalone_design_cost || 0) : 0;
+    const standaloneDesignBase = form.requires_design ? (designServiceMeta ? designServiceMeta.rate : 0) : 0;
     const standaloneDesignDiscount = form.requires_design ? (
         form.standalone_design_discount_type === 'percent'
             ? standaloneDesignBase * (Number(form.standalone_design_discount || 0) / 100)
             : Number(form.standalone_design_discount || 0)
     ) : 0;
-    const standaloneDesignTotal = Math.max(0, standaloneDesignBase - standaloneDesignDiscount);
+    const standaloneDesignTotal = Math.max(0, standaloneDesignBase + standaloneDesignDiscount); // Adding since it's a modifier (can be pos/neg)
 
     const subtotal = subtotalProducts + standaloneDesignTotal;
 
@@ -299,10 +314,11 @@ export default function NewJobPage() {
 
         if (form.requires_design) {
             detailedDescription += `\n--- STANDALONE DESIGN SERVICE ---\n`;
-            detailedDescription += `   -> Base Cost: \u20B5${Number(form.standalone_design_cost || 0).toFixed(2)}\n`;
-            if (Number(form.standalone_design_discount || 0) > 0) {
+            detailedDescription += `   -> Base Cost: \u20B5${standaloneDesignBase.toFixed(2)}\n`;
+            if (Number(form.standalone_design_discount || 0) !== 0) {
                 const dType = form.standalone_design_discount_type === 'percent' ? '%' : '\u20B5';
-                detailedDescription += `   -> Discount: ${form.standalone_design_discount}${dType}\n`;
+                const sign = Number(form.standalone_design_discount) > 0 ? '+' : '';
+                detailedDescription += `   -> Modifier: ${sign}${form.standalone_design_discount}${dType}\n`;
             }
             if (form.standalone_design_details) {
                 detailedDescription += `   -> Scope: ${form.standalone_design_details}\n`;
@@ -325,6 +341,24 @@ export default function NewJobPage() {
             detailedDescription += '\n\n--- NOTES ---\n' + form.job_description;
         }
 
+        // Splice Standalone Design locally before shipping to API
+        const submitLineItems = [...lineItems];
+        if (form.requires_design && designServiceMeta) {
+            submitLineItems.push({
+                productId: designServiceMeta.id,
+                name: designServiceMeta.name,
+                rate: standaloneDesignTotal, // Push pre-computed total
+                quantity: 1,
+                discount: 0,
+                discountType: 'cedi',
+                cost: 0,
+                costType: 'cedi',
+                design_service: false,
+                design_notes: form.standalone_design_details,
+                unit: designServiceMeta.unit
+            });
+        }
+
         const payload = {
             client_name: form.client_name,
             client_email: form.client_email,
@@ -338,7 +372,7 @@ export default function NewJobPage() {
             delivery_address: form.requires_delivery ? form.delivery_address : '',
             delivery_status: form.requires_delivery ? 'pending' : 'none',
             tax_percentage: estTaxRate, // pass tax rate to back-end for email mapping
-            items: lineItems // pass line items to back-end for invoice generation
+            items: submitLineItems // pass line items to back-end for invoice generation
         };
 
         try {
@@ -548,8 +582,8 @@ export default function NewJobPage() {
                                                     </label>
                                                     {item.design_service && (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
-                                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Cost</span>
-                                                            <input type="number" value={item.design_cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
+                                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Cost Mod</span>
+                                                            <input type="number" value={item.design_cost || 0} step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
                                                                 style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }}
                                                                 placeholder="Amt" />
                                                             <select value={item.design_costType || 'cedi'} onChange={e => updateItemField(i, 'design_costType', e.target.value)}
@@ -615,17 +649,17 @@ export default function NewJobPage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
                                 <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
                                     <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Design Base Cost ({'\u20B5'})</label>
-                                        <input type="number" step="0.01" className="form-input" required={form.requires_design}
-                                            value={form.standalone_design_cost || ''} onChange={e => setForm(f => ({ ...f, standalone_design_cost: e.target.value }))}
-                                            placeholder="Base cost of design service..." />
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Base Design Cost</label>
+                                        <div style={{ padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontWeight: 600, display: 'flex', alignItems: 'center', height: '42px' }}>
+                                            {'\u20B5'}{standaloneDesignBase.toFixed(2)}
+                                        </div>
                                     </div>
                                     <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Design Discount</label>
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Design Modifier</label>
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <input type="number" step="0.01" className="form-input"
                                                 value={form.standalone_design_discount || ''} onChange={e => setForm(f => ({ ...f, standalone_design_discount: e.target.value }))}
-                                                placeholder="Amount" style={{ flex: 2 }} />
+                                                placeholder="(+) Extra or (-) Disc" style={{ flex: 2 }} />
                                             <select className="form-input" value={form.standalone_design_discount_type || 'cedi'}
                                                 onChange={e => setForm(f => ({ ...f, standalone_design_discount_type: e.target.value }))} style={{ flex: 1 }}>
                                                 <option value="cedi">{'\u20B5'}</option>

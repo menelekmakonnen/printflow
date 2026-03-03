@@ -309,24 +309,27 @@ export default function DashboardLayout({ children }) {
 
                 <div className="sidebar-header" style={{ minHeight: '80px', justifyContent: 'center' }}>
                     <Link href="/dashboard" style={{ display: 'block', textAlign: 'center', width: '100%', textDecoration: 'none' }}>
-                        <div style={{
-                            display: 'flex', justifyContent: 'center', alignItems: 'center',
-                            height: sidebarCollapsed ? '32px' : '48px', width: '100%', marginBottom: sidebarCollapsed ? '0' : '8px'
-                        }}>
-                            {systemLogo ? (
-                                <img
-                                    src={systemLogo}
-                                    alt="System Logo"
-                                    style={{
-                                        maxHeight: '100%',
-                                        maxWidth: sidebarCollapsed ? '40px' : '180px',
-                                        objectFit: 'contain'
-                                    }}
-                                />
-                            ) : (
-                                <div style={{ fontWeight: 800, fontSize: sidebarCollapsed ? '1rem' : '1.5rem', color: 'var(--color-primary)' }}>PF</div>
-                            )}
-                        </div>
+                        <svg width={sidebarCollapsed ? 32 : 48} height={sidebarCollapsed ? 32 : 48} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ margin: '0 auto' }}>
+                            <defs>
+                                <clipPath id="paperClip">
+                                    <rect x="0" y="36" width="64" height="28" />
+                                </clipPath>
+                            </defs>
+                            <rect x="6" y="26" width="52" height="24" rx="6" fill="var(--color-border-light)" />
+                            <path d="M20 8H44V24H20V8Z" fill="var(--color-text-muted)" opacity="0.5" />
+                            <rect x="8" y="24" width="48" height="24" rx="4" fill="var(--color-border)" />
+                            <rect x="42" y="27" width="10" height="4" rx="1" fill="var(--brand-primary)" opacity="0.8" />
+                            <circle cx="14" cy="29" r="2" fill="var(--color-completed)" />
+                            <rect x="16" y="34" width="32" height="4" rx="2" fill="var(--color-bg-primary)" />
+                            <g clipPath="url(#paperClip)">
+                                <g transform={`translate(0, ${scrollProgress * 24})`}>
+                                    <rect x="20" y="14" width="24" height="26" fill="#ffffff" />
+                                    <path d="M24 20H40M24 26H40M24 32H34" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+                                </g>
+                            </g>
+                            <path d="M20 48H44L46 56H18L20 48Z" fill="var(--color-border-light)" opacity="0.8" />
+                        </svg>
+                        {!sidebarCollapsed && <div style={{ fontSize: '1rem', fontWeight: 'bold', marginTop: '4px', color: 'var(--color-text-primary)' }}>{companyName}</div>}
                     </Link>
                     {!sidebarCollapsed && <div className="sidebar-role">{formatRoles(user.roles || user.role)}</div>}
                 </div>
