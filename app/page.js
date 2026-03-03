@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [systemLogo, setSystemLogo] = useState(null);
+  const [systemLogoDark, setSystemLogoDark] = useState(null);
   const [companyName, setCompanyName] = useState('PopOut Studios');
 
   useEffect(() => {
@@ -22,11 +23,33 @@ export default function LoginPage() {
       const res = await getConfig();
       if (res.success) {
         if (res.data.logo_base64) setSystemLogo(res.data.logo_base64);
+        if (res.data.logo_dark_base64) setSystemLogoDark(res.data.logo_dark_base64);
         if (res.data.company_name) setCompanyName(res.data.company_name);
       }
     }
     loadConfig();
   }, []);
+
+  useEffect(() => {
+    function updateFavicon() {
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+
+      const lightIcon = systemLogo || '/images/logo-light.png';
+      const darkIcon = systemLogoDark || '/images/logo-dark.png';
+
+      link.href = document.hidden ? darkIcon : lightIcon;
+    }
+
+    document.addEventListener("visibilitychange", updateFavicon);
+    updateFavicon();
+
+    return () => document.removeEventListener("visibilitychange", updateFavicon);
+  }, [systemLogo, systemLogoDark]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -72,7 +95,7 @@ export default function LoginPage() {
               priority
             />
           )}
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, marginTop: '4px' }}>Powered by <strong>PrintFlow</strong></p>
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500, opacity: 0.7, marginTop: '4px' }}>Powered by <strong>PopOut Studios</strong></p>
           <p>Print Office Operations</p>
         </div>
 

@@ -59,7 +59,8 @@ function handleLogin(payload) {
         user: {
             username: user.username,
             display_name: user.display_name,
-            roles: userRoles
+            roles: userRoles,
+            avatar_base64: user.avatar_base64 || ''
         }
     });
 }
@@ -132,5 +133,12 @@ function requireAuth(token, allowedRoles) {
 function handleGetMe(payload) {
     var auth = requireAuth(payload.token);
     if (auth.error) return auth.error;
+
+    // Fetch fresh user data to get the latest avatar
+    var user = findRow(SHEET_USERS, 'username', auth.user.username);
+    if (user) {
+        auth.user.avatar_base64 = user.avatar_base64 || '';
+    }
+
     return jsonResponse(auth.user);
 }

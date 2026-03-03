@@ -74,12 +74,12 @@ function routeAction(action, payload) {
         'getJobPublic': handleGetJobPublic,
         'submitDesignFeedback': handleSubmitDesignFeedback,
 
-        // Users
         'getUsers': handleGetUsers,
         'createUser': handleCreateUser,
         'updateUser': handleUpdateUser,
         'disableUser': handleDisableUser,
         'enableUser': handleEnableUser,
+        'updateProfile': handleUpdateProfile,
 
         // Notifications
         'getNotifications': handleGetNotifications,

@@ -14,6 +14,7 @@ export default function SettingsPage() {
     const [newType, setNewType] = useState('');
     const [companyName, setCompanyName] = useState('');
     const [logoBase64, setLogoBase64] = useState('');
+    const [logoDarkBase64, setLogoDarkBase64] = useState('');
 
     const loadConfig = useCallback(async () => {
         setLoading(true);
@@ -22,6 +23,7 @@ export default function SettingsPage() {
             setConfig(res.data);
             setCompanyName(res.data.company_name || 'PopOut Studios');
             setLogoBase64(res.data.logo_base64 || '');
+            setLogoDarkBase64(res.data.logo_dark_base64 || '');
         }
         setLoading(false);
     }, []);
@@ -46,7 +48,7 @@ export default function SettingsPage() {
         setSaving(false);
     }
 
-    async function handleLogoUpload(e) {
+    async function handleLogoUpload(e, isDark = false) {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -61,10 +63,14 @@ export default function SettingsPage() {
             setSaving(true);
             setMessage({ type: '', text: '' });
 
-            const res = await updateConfig({ logo_base64: base64Data });
+            const res = await updateConfig(isDark ? { logo_dark_base64: base64Data } : { logo_base64: base64Data });
             if (res.success) {
-                setMessage({ type: 'success', text: 'Logo uploaded successfully' });
-                setLogoBase64(base64Data);
+                setMessage({ type: 'success', text: `${isDark ? 'Dark ' : ''}Logo uploaded successfully` });
+                if (isDark) {
+                    setLogoDarkBase64(base64Data);
+                } else {
+                    setLogoBase64(base64Data);
+                }
             } else {
                 setMessage({ type: 'error', text: res.error });
             }
@@ -146,43 +152,74 @@ export default function SettingsPage() {
 
             {/* System Logo */}
             <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
-                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>System Logo</h3>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>System Logos</h3>
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
-                    Upload a custom logo to display on the login page and dashboard. Recommended height: 60px. Max size: 500KB.
+                    Upload standard (light background) and dark mode (dark background) logos. Used in the sidebar and as favicons. Max 500KB.
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xl)' }}>
-                    <div style={{
-                        width: '220px', height: '60px',
-                        border: '1px dashed var(--color-border)',
-                        borderRadius: 'var(--radius-sm)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: 'var(--color-bg-secondary)',
-                        overflow: 'hidden'
-                    }}>
-                        {logoBase64 ? (
-                            <img src={logoBase64} alt="Custom Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                        ) : (
-                            <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>No Logo Uploaded</span>
-                        )}
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xl)' }}>
+                    {/* Light Logo */}
+                    <div style={{ flex: '1 1 300px' }}>
+                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Standard/Light Logo</h4>
+                        <div style={{
+                            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
+                            display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
+                            background: '#f8fafc' // Force light background for preview
+                        }}>
+                            <div style={{
+                                width: '64px', height: '64px', background: '#fff', borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                                flexShrink: 0, boxShadow: 'var(--shadow-sm)'
+                            }}>
+                                {logoBase64 ? (
+                                    <img src={logoBase64} alt="Light Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                                ) : (
+                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>None</span>
+                                )}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <input type="file" id="logo-light-upload" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleLogoUpload(e, false)} disabled={saving} />
+                                <label htmlFor="logo-light-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer' }}>
+                                    {saving ? 'Uploading...' : 'Choose Image'}
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleLogoUpload}
-                            disabled={saving}
-                            style={{ display: 'none' }}
-                            id="logo-upload"
-                        />
-                        <label htmlFor="logo-upload" className="btn btn-primary" style={{ cursor: 'pointer' }}>
-                            {saving ? 'Uploading...' : 'Upload New Logo'}
-                        </label>
+
+                    {/* Dark Logo */}
+                    <div style={{ flex: '1 1 300px' }}>
+                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Dark Mode Logo</h4>
+                        <div style={{
+                            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
+                            display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
+                            background: '#0f172a' // Force dark background for preview
+                        }}>
+                            <div style={{
+                                width: '64px', height: '64px', background: '#1e293b', borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                                flexShrink: 0, boxShadow: 'var(--shadow-sm)'
+                            }}>
+                                {logoDarkBase64 ? (
+                                    <img src={logoDarkBase64} alt="Dark Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                                ) : (
+                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>None</span>
+                                )}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <input type="file" id="logo-dark-upload" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleLogoUpload(e, true)} disabled={saving} />
+                                <label htmlFor="logo-dark-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer', color: '#f1f5f9' }}>
+                                    {saving ? 'Uploading...' : 'Choose Image'}
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
+
             {/* Job Types */}
-            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+            < div className="card" style={{ marginBottom: 'var(--space-xl)' }
+            }>
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Job Types</h3>
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
                     Manage the types of print jobs available in the system. These appear in the New Job form.
@@ -217,10 +254,10 @@ export default function SettingsPage() {
                         <IconPlus size={16} /> Add
                     </button>
                 </div>
-            </div>
+            </div >
 
             {/* Currency */}
-            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+            < div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Currency</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                     <div style={{ fontSize: '2rem', fontWeight: 700 }}>{'\u20B5'}</div>
@@ -231,10 +268,10 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 </div>
-            </div>
+            </div >
 
             {/* System Info */}
-            <div className="card">
+            < div className="card" >
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <IconInfo size={16} /> System Information
                 </h3>
@@ -247,7 +284,7 @@ export default function SettingsPage() {
                         <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

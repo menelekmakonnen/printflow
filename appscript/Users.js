@@ -4,7 +4,7 @@
  * Roles stored as comma-separated string: "receptionist,designer"
  */
 
-const USER_HEADERS = ['user_id', 'username', 'password_hash', 'display_name', 'roles', 'status', 'created_at'];
+const USER_HEADERS = ['user_id', 'username', 'password_hash', 'display_name', 'roles', 'status', 'created_at', 'avatar_base64'];
 
 const VALID_ROLES = ['receptionist', 'designer', 'finisher', 'admin', 'super_admin'];
 
@@ -198,4 +198,29 @@ function handleEnableUser(payload) {
     logActivity(auth.user.username, 'enable_user', 'Enabled user "' + payload.target_username + '"');
 
     return jsonResponse({ message: 'User "' + payload.target_username + '" enabled' });
+}
+
+/**
+ * Allow any authenticated user to update their own profile (avatar)
+ */
+function handleUpdateProfile(payload) {
+    var auth = requireAuth(payload.token); // any logged in user
+    if (auth.error) return auth.error;
+
+    var user = findRow(SHEET_USERS, 'username', auth.user.username);
+    if (!user) return errorResponse('User not found', 404);
+
+    var updates = {};
+
+    if (payload.avatar_base64 !== undefined) {
+        updates.avatar_base64 = payload.avatar_base64;
+    }
+
+    if (Object.keys(updates).length > 0) {
+        updateRow(SHEET_USERS, user._rowIndex, updates);
+    }
+
+    logActivity(auth.user.username, 'update_profile', 'Updated their profile image');
+
+    return jsonResponse({ message: 'Profile updated' });
 }

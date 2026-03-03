@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { getUser, isLoggedIn, logout as apiLogout, getUserRoles, hasAnyRole, getConfig } from '@/lib/api';
+import { getUser, isLoggedIn, logout as apiLogout, getUserRoles, hasAnyRole, getConfig, updateProfile } from '@/lib/api';
 import { ThemeToggle } from '@/lib/theme';
 import {
     IconDashboard, IconClipboard, IconPlusCircle, IconGear,
     IconUsers, IconBell, IconScroll, IconQueue, IconScissors,
     IconMenu, IconLogout, IconChevronLeft, IconChevronRight,
-    IconDollarSign
+    IconCedis, IconX
 } from '@/lib/icons';
 import Link from 'next/link';
 
@@ -52,7 +52,7 @@ function buildNavSections(roles) {
 
     // Admin/Super Admin management
     if (roles.some(r => ['admin', 'super_admin'].includes(r))) {
-        addItem('Management', { href: '/dashboard/accounting', icon: IconDollarSign, label: 'Accounting' });
+        addItem('Management', { href: '/dashboard/accounting', icon: IconCedis, label: 'Accounting' });
         addItem('Management', { href: '/dashboard/users', icon: IconUsers, label: 'User Management' });
         addItem('Management', { href: '/dashboard/notifications', icon: IconBell, label: 'Notification Log' });
     }
@@ -90,6 +90,13 @@ export default function DashboardLayout({ children }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [systemLogo, setSystemLogo] = useState(null);
+    const [systemLogoDark, setSystemLogoDark] = useState(null);
+
+    // Profile Edit State
+    const [showProfileModal, setShowProfileModal] = useState(false);
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [newAvatarBase64, setNewAvatarBase64] = useState('');
+    const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
 
     useEffect(() => {
         if (!isLoggedIn()) {
@@ -100,16 +107,75 @@ export default function DashboardLayout({ children }) {
 
         async function fetchLogo() {
             const res = await getConfig();
-            if (res.success && res.data.logo_base64) {
-                setSystemLogo(res.data.logo_base64);
+            if (res.success) {
+                if (res.data.logo_base64) setSystemLogo(res.data.logo_base64);
+                if (res.data.logo_dark_base64) setSystemLogoDark(res.data.logo_dark_base64);
             }
         }
         fetchLogo();
     }, [router]);
 
+    useEffect(() => {
+        function updateFavicon() {
+            let link = document.querySelector("link[rel~='icon']");
+            if (!link) {
+                link = document.createElement('link');
+                link.rel = 'icon';
+                document.head.appendChild(link);
+            }
+
+            const lightIcon = systemLogo || '/images/logo-light.png';
+            const darkIcon = systemLogoDark || '/images/logo-dark.png';
+
+            link.href = document.hidden ? darkIcon : lightIcon;
+        }
+
+        document.addEventListener("visibilitychange", updateFavicon);
+        updateFavicon(); // Initialize
+
+        return () => document.removeEventListener("visibilitychange", updateFavicon);
+    }, [systemLogo, systemLogoDark]);
+
     function handleLogout() {
         apiLogout();
         router.push('/');
+    }
+
+    async function handleAvatarUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 500 * 1024) { // 500KB limit
+            setProfileMessage({ type: 'error', text: 'Image must be less than 500KB.' });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => setNewAvatarBase64(reader.result);
+        reader.readAsDataURL(file);
+    }
+
+    async function handleSaveProfile() {
+        setProfileSaving(true);
+        setProfileMessage({ type: '', text: '' });
+
+        const res = await updateProfile(newAvatarBase64);
+        if (res.success) {
+            setProfileMessage({ type: 'success', text: 'Profile updated!' });
+            const updatedUser = { ...user, avatar_base64: newAvatarBase64 };
+            setUserState(updatedUser);
+            // Must update local storage too!
+            localStorage.setItem('printflow_user', JSON.stringify(updatedUser));
+
+            setTimeout(() => {
+                setShowProfileModal(false);
+                setProfileMessage({ type: '', text: '' });
+                setNewAvatarBase64('');
+            }, 1000);
+        } else {
+            setProfileMessage({ type: 'error', text: res.error || 'Failed to update profile' });
+        }
+        setProfileSaving(false);
     }
 
     if (!user) {
@@ -183,8 +249,12 @@ export default function DashboardLayout({ children }) {
                 </nav>
 
                 <div className="sidebar-footer">
-                    <div className="sidebar-user">
-                        <div className="sidebar-avatar">{initials}</div>
+                    <div className="sidebar-user" onClick={() => setShowProfileModal(true)} style={{ cursor: 'pointer', transition: 'background var(--transition-fast)' }} title="Edit Profile">
+                        <div className="sidebar-avatar" style={{ overflow: 'hidden' }}>
+                            {user.avatar_base64 ? (
+                                <img src={user.avatar_base64} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : initials}
+                        </div>
                         <div className="sidebar-user-info">
                             <div className="sidebar-user-name">{user.display_name}</div>
                             <div className="sidebar-user-role">{formatRoles(user.roles || user.role)}</div>
@@ -235,6 +305,51 @@ export default function DashboardLayout({ children }) {
                     {children}
                 </div>
             </main>
+
+            {/* Profile Edit Modal */}
+            {showProfileModal && (
+                <div className="modal-overlay" onClick={(e) => { if (e.target.className === 'modal-overlay') setShowProfileModal(false) }}>
+                    <div className="modal">
+                        <div className="modal-header">
+                            <h3 className="modal-title">Edit Profile</h3>
+                            <button className="modal-close" onClick={() => setShowProfileModal(false)}><IconX /></button>
+                        </div>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                            {profileMessage.text && (
+                                <div className={`alert ${profileMessage.type === 'success' ? 'alert-success' : 'alert-error'}`} style={{ width: '100%' }}>
+                                    {profileMessage.text}
+                                </div>
+                            )}
+
+                            <div style={{
+                                width: '120px', height: '120px', borderRadius: '50%', backgroundColor: 'var(--color-bg-secondary)',
+                                overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '2rem', fontWeight: 600, color: 'var(--color-text-muted)', border: '2px dashed var(--color-border)'
+                            }}>
+                                {newAvatarBase64 || user.avatar_base64 ? (
+                                    <img src={newAvatarBase64 || user.avatar_base64} alt="New Avatar Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : initials}
+                            </div>
+
+                            <div style={{ textAlign: 'center' }}>
+                                <input type="file" id="avatar-upload" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} disabled={profileSaving} />
+                                <label htmlFor="avatar-upload" className="btn btn-secondary" style={{ cursor: 'pointer' }}>
+                                    Choose Picture
+                                </label>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '8px' }}>
+                                    Max size: 500KB. Square images recommended.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setShowProfileModal(false)} disabled={profileSaving}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleSaveProfile} disabled={profileSaving || !newAvatarBase64}>
+                                {profileSaving ? 'Saving...' : 'Save Profile'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
