@@ -7,6 +7,7 @@ const JOB_HEADERS = [
     'job_id', 'client_name', 'client_email', 'client_phone',
     'notification_pref', 'job_type', 'job_description',
     'total_amount', 'payment_status', 'status', 'case_folder_url',
+    'requires_design', 'design_sample_url',
     'created_by', 'updated_by',
     'created_at', 'approved_at', 'processing_started_at',
     'finishing_started_at', 'completed_at'
@@ -137,6 +138,8 @@ function handleCreateJob(payload) {
         payment_status: 'pending',
         status: 'pending_payment',
         case_folder_url: caseFolderUrl,
+        requires_design: payload.requires_design === true,
+        design_sample_url: '',
         created_by: auth.user.username,
         updated_by: auth.user.username,
         created_at: now(),
@@ -265,5 +268,117 @@ function handleCompleteJob(payload) {
         Logger.log('Notification failed: ' + e.message);
     }
 
-    return jsonResponse({ message: `Job ${payload.job_id} completed`, status: 'completed' });
+    return jsonResponse({ message: `Job ${payload.job_id} marked as completed`, status: 'completed' });
+}
+
+/**
+ * Handle File Uploads for a newly created Job
+ */
+function handleUploadFile(payload) {
+    const auth = requireAuth(payload.token, ['receptionist', 'admin', 'super_admin']);
+    if (auth.error) return auth.error;
+
+    const { job_id, filename, mimeType, base64Data } = payload;
+    if (!job_id || !filename || !base64Data) {
+        return errorResponse('Missing file upload parameters', 400);
+    }
+
+    const job = findRow(SHEET_JOBS, 'job_id', job_id);
+    if (!job) return errorResponse('Job not found', 404);
+
+    try {
+        const fileUrl = uploadFileToJob(job_id, filename, mimeType || 'application/octet-stream', base64Data);
+        logActivity(auth.user.username, 'upload_file', `Uploaded ${filename} to job ${job_id}`);
+        return jsonResponse({ message: 'File uploaded successfully', file_url: fileUrl });
+    } catch (e) {
+        return errorResponse('Upload failed: ' + e.message, 500);
+    }
+}
+
+/**
+ * Send a design sample to the client for review
+ */
+function handleSendDesignReview(payload) {
+    const auth = requireAuth(payload.token, ['designer', 'admin', 'super_admin']);
+    if (auth.error) return auth.error;
+
+    const { job_id, filename, mimeType, base64Data, messageToClient } = payload;
+    if (!job_id || !base64Data) return errorResponse('Missing design file or job ID', 400);
+
+    const job = findRow(SHEET_JOBS, 'job_id', job_id);
+    if (!job) return errorResponse('Job not found', 404);
+
+    try {
+        const fileUrl = uploadDesignSample(job_id, filename, mimeType, base64Data);
+        updateRow(SHEET_JOBS, job._rowIndex, {
+            status: 'pending_design_approval',
+            design_sample_url: fileUrl,
+            updated_by: auth.user.username
+        });
+
+        logActivity(auth.user.username, 'send_design', `Sent design review to client for job ${job_id}`);
+
+        // Try sending email
+        try {
+            sendDesignReviewEmail(job, fileUrl, messageToClient);
+        } catch (emailErr) {
+            Logger.log('Design email failed: ' + emailErr.message);
+        }
+
+        return jsonResponse({ message: 'Design sent for review', status: 'pending_design_approval' });
+    } catch (e) {
+        return errorResponse('Failed to send design: ' + e.message, 500);
+    }
+}
+
+/**
+ * Public route to get job details for the client review page
+ */
+function handleGetJobPublic(payload) {
+    if (!payload.job_id) return errorResponse('Missing job ID', 400);
+
+    const job = findRow(SHEET_JOBS, 'job_id', payload.job_id);
+    if (!job) return errorResponse('Job not found', 404);
+
+    // Only return safe fields
+    return jsonResponse({
+        job_id: job.job_id,
+        client_name: job.client_name,
+        job_type: job.job_type,
+        status: job.status,
+        design_sample_url: job.design_sample_url,
+        requires_design: job.requires_design
+    });
+}
+
+/**
+ * Public route for client to submit design feedback
+ */
+function handleSubmitDesignFeedback(payload) {
+    const { job_id, approved, feedback } = payload;
+    if (!job_id || typeof approved !== 'boolean') return errorResponse('Invalid parameters', 400);
+
+    const job = findRow(SHEET_JOBS, 'job_id', job_id);
+    if (!job) return errorResponse('Job not found', 404);
+    if (job.status !== 'pending_design_approval') {
+        return errorResponse('Job is not pending design approval', 400);
+    }
+
+    const newStatus = approved ? 'approved_for_print' : 'design_rejected';
+
+    updateRow(SHEET_JOBS, job._rowIndex, {
+        status: newStatus,
+        updated_by: 'CLIENT'
+    });
+
+    logActivity('CLIENT', 'design_feedback', `Client ${approved ? 'approved' : 'rejected'} design for ${job_id}. Feedback: ${feedback || 'None'}`);
+
+    // Notify designer
+    try {
+        sendDesignFeedbackNotification(job, approved, feedback);
+    } catch (e) {
+        Logger.log('Feedback notification failed: ' + e.message);
+    }
+
+    return jsonResponse({ message: 'Feedback submitted successfully', status: newStatus });
 }

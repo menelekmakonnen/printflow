@@ -62,7 +62,6 @@ function routeAction(action, payload) {
         'logout': handleLogout,
         'getMe': handleGetMe,
 
-        // Jobs
         'getJobs': handleGetJobs,
         'getJob': handleGetJob,
         'createJob': handleCreateJob,
@@ -70,6 +69,10 @@ function routeAction(action, payload) {
         'receiveJob': handleReceiveJob,
         'processingComplete': handleProcessingComplete,
         'completeJob': handleCompleteJob,
+        'uploadFile': handleUploadFile,
+        'sendDesignReview': handleSendDesignReview,
+        'getJobPublic': handleGetJobPublic,
+        'submitDesignFeedback': handleSubmitDesignFeedback,
 
         // Users
         'getUsers': handleGetUsers,

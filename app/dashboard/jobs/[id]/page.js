@@ -5,18 +5,21 @@ import { useParams, useRouter } from 'next/navigation';
 import {
     getJob, getUser, approveJob, receiveJob,
     processingComplete, completeJob, getNotifications, hasAnyRole,
-    getInventory, deductInventory
+    getInventory, deductInventory, sendDesignReview
 } from '@/lib/api';
 import {
     IconArrowLeft, IconTicket, IconCheckCircle, IconWrench,
     IconScissors, IconTrophy, IconFolder, IconExternalLink,
-    IconXCircle, IconPrinter
+    IconXCircle, IconPrinter, IconFileText
 } from '@/lib/icons';
 
 const STATUS_CONFIG = {
     pending_payment: { label: 'Pending Payment', badge: 'badge-pending', color: 'var(--color-pending)' },
     approved: { label: 'Approved', badge: 'badge-approved', color: 'var(--color-approved)' },
     in_progress: { label: 'In Progress', badge: 'badge-progress', color: 'var(--color-progress)' },
+    pending_design_approval: { label: 'Pending Design Approval', badge: 'badge-pending', color: '#f59e0b' },
+    approved_for_print: { label: 'Approved for Print', badge: 'badge-approved', color: '#3b82f6' },
+    design_rejected: { label: 'Design Rejected', badge: 'badge-error', color: '#ef4444' },
     finishing: { label: 'Finishing', badge: 'badge-finishing', color: 'var(--color-finishing)' },
     completed: { label: 'Completed', badge: 'badge-completed', color: 'var(--color-completed)' }
 };
@@ -47,6 +50,11 @@ export default function JobDetailPage() {
     const [showMaterialModal, setShowMaterialModal] = useState(false);
     const [materialForm, setMaterialForm] = useState({ item_id: '', quantity: 1 });
     const [deductLoading, setDeductLoading] = useState(false);
+
+    // Design Review state
+    const [showDesignModal, setShowDesignModal] = useState(false);
+    const [designForm, setDesignForm] = useState({ file: null, messageToClient: '' });
+    const [sendDesignLoading, setSendDesignLoading] = useState(false);
 
     const loadJob = useCallback(async () => {
         setLoading(true);
@@ -101,6 +109,41 @@ export default function JobDetailPage() {
             setMessage({ type: 'error', text: res.error || 'Failed to record material usage' });
         }
         setDeductLoading(false);
+    }
+
+    async function handleSendDesign(e) {
+        e.preventDefault();
+        if (!designForm.file) return;
+
+        setSendDesignLoading(true);
+        setMessage({ type: '', text: '' });
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const base64Data = reader.result.split(',')[1];
+            const res = await sendDesignReview(
+                jobId,
+                designForm.file.name,
+                designForm.file.type || 'application/octet-stream',
+                base64Data,
+                designForm.messageToClient
+            );
+
+            if (res.success) {
+                setMessage({ type: 'success', text: 'Design sent to client for review' });
+                setShowDesignModal(false);
+                setDesignForm({ file: null, messageToClient: '' });
+                await loadJob();
+            } else {
+                setMessage({ type: 'error', text: res.error || 'Failed to send design' });
+            }
+            setSendDesignLoading(false);
+        };
+        reader.onerror = () => {
+            setMessage({ type: 'error', text: 'Failed to read file' });
+            setSendDesignLoading(false);
+        };
+        reader.readAsDataURL(designForm.file);
     }
 
     async function handleAction(actionFn, actionName) {
@@ -193,7 +236,19 @@ export default function JobDetailPage() {
                     </button>
                 )}
 
-                {job.status === 'in_progress' && (hasAnyRole(['designer']) || isAdmin) && (
+                {job.status === 'in_progress' && job.requires_design && (hasAnyRole(['designer']) || isAdmin) && (
+                    <button
+                        className="big-btn"
+                        onClick={() => setShowDesignModal(true)}
+                        style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+                        disabled={actionLoading}
+                    >
+                        <IconFolder size={22} />
+                        SEND DESIGN FOR REVIEW \u2014 Email Client
+                    </button>
+                )}
+
+                {(job.status === 'in_progress' || job.status === 'approved_for_print' || job.status === 'design_rejected') && (hasAnyRole(['designer']) || isAdmin) && (
                     <button
                         className="big-btn big-btn-processing"
                         onClick={() => handleAction(processingComplete, 'mark processing as complete')}
@@ -241,6 +296,28 @@ export default function JobDetailPage() {
                     <div className="detail-item">
                         <div className="detail-item-label">Phone</div>
                         <div className="detail-item-value">{job.client_phone}</div>
+                    </div>
+                )}
+                {job.requires_design !== undefined && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Design Services</div>
+                        <div className="detail-item-value">
+                            {job.requires_design ? (
+                                <span style={{ color: 'var(--color-pending)', fontWeight: 600 }}>Required</span>
+                            ) : (
+                                <span style={{ color: 'var(--color-text-muted)' }}>Not Required</span>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {job.design_sample_url && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Design Sample</div>
+                        <div className="detail-item-value">
+                            <a href={job.design_sample_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <IconFileText size={14} /> View Sample <IconExternalLink size={12} />
+                            </a>
+                        </div>
                     </div>
                 )}
                 <div className="detail-item">
@@ -433,6 +510,61 @@ export default function JobDetailPage() {
                                     </button>
                                     <button type="submit" className="btn btn-primary" disabled={deductLoading || !materialForm.item_id}>
                                         {deductLoading ? 'Recording...' : 'Deduct Material'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Design Review Modal */}
+            {showDesignModal && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Send Design for Review</h3>
+                            <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowDesignModal(false)}>
+                                <IconXCircle size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <form onSubmit={handleSendDesign}>
+                                <div className="form-group">
+                                    <label className="form-label">Upload Design Sample (Image/PDF)</label>
+                                    <input
+                                        type="file"
+                                        className="form-input"
+                                        required
+                                        accept="image/*,application/pdf"
+                                        onChange={e => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                setDesignForm(prev => ({ ...prev, file: e.target.files[0] }));
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="form-group" style={{ marginTop: 'var(--space-md)' }}>
+                                    <label className="form-label">Message to Client (Optional)</label>
+                                    <textarea
+                                        className="form-input"
+                                        rows="3"
+                                        placeholder="E.g., Please review the attached design..."
+                                        value={designForm.messageToClient}
+                                        onChange={e => setDesignForm(prev => ({ ...prev, messageToClient: e.target.value }))}
+                                    />
+                                    <p style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                        This message will be included in the email sent to the client.
+                                    </p>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 'var(--space-xl)' }}>
+                                    <button type="button" className="btn btn-ghost" onClick={() => setShowDesignModal(false)} disabled={sendDesignLoading}>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="btn btn-primary" disabled={sendDesignLoading || !designForm.file}>
+                                        {sendDesignLoading ? 'Sending...' : 'Send Review Link'}
                                     </button>
                                 </div>
                             </form>

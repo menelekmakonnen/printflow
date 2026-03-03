@@ -87,3 +87,39 @@ function handleInitFolders(payload) {
     logActivity(auth.user.username, 'init_folders', 'Initialized Drive folder structure');
     return jsonResponse({ message: result });
 }
+
+/**
+ * Upload a file to a job's Uploads folder
+ */
+function uploadFileToJob(jobId, filename, mimeType, base64Data) {
+    const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
+    const casesFolder = getOrCreateSubfolder(root, 'Cases');
+    const jobFolder = getOrCreateSubfolder(casesFolder, jobId);
+    const uploadsFolder = getOrCreateSubfolder(jobFolder, 'Uploads');
+
+    const decodedData = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decodedData, mimeType, filename);
+    const file = uploadsFolder.createFile(blob);
+
+    // Anyone with the link can view (important for displaying in dashboard)
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+}
+
+/**
+ * Upload a design sample to a job's Designs folder
+ */
+function uploadDesignSample(jobId, filename, mimeType, base64Data) {
+    const root = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
+    const casesFolder = getOrCreateSubfolder(root, 'Cases');
+    const jobFolder = getOrCreateSubfolder(casesFolder, jobId);
+    const designsFolder = getOrCreateSubfolder(jobFolder, 'Designs');
+
+    const decodedData = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decodedData, mimeType, filename);
+    const file = designsFolder.createFile(blob);
+
+    // Anyone with the link can view (needed for public review page)
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+}

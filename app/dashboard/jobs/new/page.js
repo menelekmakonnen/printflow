@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createJob } from '@/lib/api';
+import { createJob, uploadFile } from '@/lib/api';
 import { getProductsByCategory, getProductById } from '@/lib/products';
 import { IconArrowLeft, IconPlus, IconMinus, IconX, IconPlusCircle, IconTrash } from '@/lib/icons';
 
@@ -15,7 +15,9 @@ export default function NewJobPage() {
         client_email: '',
         client_phone: '',
         job_description: '',
+        requires_design: false
     });
+    const [files, setFiles] = useState([]);
 
     // Line items: { productId, name, rate, quantity, unit }
     const [lineItems, setLineItems] = useState([]);
@@ -58,6 +60,17 @@ export default function NewJobPage() {
         setLineItems(updated);
     }
 
+    function handleFileChange(e) {
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files);
+            setFiles(prev => [...prev, ...newFiles]);
+        }
+    }
+
+    function removeFile(index) {
+        setFiles(files.filter((_, i) => i !== index));
+    }
+
     function removeItem(index) {
         setLineItems(lineItems.filter((_, i) => i !== index));
     }
@@ -66,6 +79,10 @@ export default function NewJobPage() {
         e.preventDefault();
         if (!form.client_name.trim()) { setError('Client name is required'); return; }
         if (lineItems.length === 0) { setError('Add at least one product/service'); return; }
+        if (form.requires_design && !form.job_description.trim()) {
+            setError('Additional Notes are required when requesting Design Services');
+            return;
+        }
 
         setError('');
         setLoading(true);
@@ -83,11 +100,34 @@ export default function NewJobPage() {
             job_type: jobType.length > 100 ? jobType.substring(0, 97) + '...' : jobType,
             job_description: description,
             total_amount: total,
+            requires_design: form.requires_design
         };
 
         try {
+            // Pre-process files
+            const base64Files = await Promise.all(files.map(file => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve({
+                        name: file.name,
+                        type: file.type || 'application/octet-stream',
+                        base64: reader.result.split(',')[1] // Get base64 string
+                    });
+                    reader.onerror = error => reject(error);
+                    reader.readAsDataURL(file);
+                });
+            }));
+
             const res = await createJob(payload);
             if (res.success) {
+                // Upload files if any
+                for (const fileData of base64Files) {
+                    try {
+                        await uploadFile(res.data.job_id, fileData.name, fileData.type, fileData.base64);
+                    } catch (uploadErr) {
+                        console.error('File upload failed:', uploadErr);
+                    }
+                }
                 router.push(`/dashboard/jobs/${res.data.job_id}`);
             } else {
                 setError(res.error || 'Failed to create job');
@@ -256,10 +296,56 @@ export default function NewJobPage() {
                         )}
                     </div>
 
+                    {/* DESIGN & FILES */}
+                    <div style={{ marginBottom: 'var(--space-xl)', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-lg)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
+                            <div>
+                                <h3 className="card-title" style={{ margin: 0 }}>Design Services</h3>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>Does this job require design work?</p>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={form.requires_design}
+                                    onChange={e => setForm(f => ({ ...f, requires_design: e.target.checked }))}
+                                    style={{ width: '20px', height: '20px', marginRight: '8px', cursor: 'pointer' }}
+                                />
+                                <span style={{ fontWeight: 600 }}>Yes, requires design</span>
+                            </label>
+                        </div>
+
+                        {!form.requires_design && (
+                            <div style={{ marginTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-md)' }}>
+                                <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Client Files</h4>
+                                <input
+                                    type="file"
+                                    multiple
+                                    onChange={handleFileChange}
+                                    style={{ marginBottom: '8px', display: 'block' }}
+                                />
+                                {files.length > 0 && (
+                                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.85rem' }}>
+                                        {files.map((file, i) => (
+                                            <li key={i} style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--color-bg-card)', padding: '6px 12px', marginBottom: '4px', borderRadius: '4px' }}>
+                                                <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
+                                                <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: 'var(--color-pending)', cursor: 'pointer' }}>
+                                                    <IconX size={14} />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* NOTES */}
                     <div className="form-group">
-                        <label className="form-label" htmlFor="notes">Additional Notes</label>
+                        <label className="form-label" htmlFor="notes">
+                            Additional Notes {form.requires_design && <span style={{ color: 'var(--color-pending)', fontWeight: 'normal' }}>(Required for Design Services)</span>}
+                        </label>
                         <textarea id="notes" className="form-input" rows={3}
+                            required={form.requires_design}
                             value={form.job_description} onChange={e => setForm(f => ({ ...f, job_description: e.target.value }))}
                             placeholder="Special instructions, delivery details, etc." />
                     </div>
