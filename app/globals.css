@@ -230,6 +230,25 @@ a:hover {
   right: 0;
   height: 3px;
   background: linear-gradient(90deg, var(--color-accent), #8b5cf6, var(--color-accent));
+  background-size: 200% auto;
+  transition: height var(--transition-fast), background 0.3s ease;
+}
+
+.login-card:focus-within::before {
+  height: 4px;
+  background: linear-gradient(90deg, #10b981, #3b82f6, #8b5cf6, #10b981);
+  background-size: 300% auto;
+  animation: gradient-flow 2s linear infinite;
+}
+
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% center;
+  }
+
+  100% {
+    background-position: 300% center;
+  }
 }
 
 .login-logo {
