@@ -1,0 +1,331 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import {
+    getJob, getUser, approveJob, receiveJob,
+    processingComplete, completeJob, getNotifications, hasAnyRole
+} from '@/lib/api';
+import {
+    IconArrowLeft, IconTicket, IconCheckCircle, IconWrench,
+    IconScissors, IconTrophy, IconFolder, IconExternalLink,
+    IconXCircle, IconPrinter
+} from '@/lib/icons';
+
+const STATUS_CONFIG = {
+    pending_payment: { label: 'Pending Payment', badge: 'badge-pending', color: 'var(--color-pending)' },
+    approved: { label: 'Approved', badge: 'badge-approved', color: 'var(--color-approved)' },
+    in_progress: { label: 'In Progress', badge: 'badge-progress', color: 'var(--color-progress)' },
+    finishing: { label: 'Finishing', badge: 'badge-finishing', color: 'var(--color-finishing)' },
+    completed: { label: 'Completed', badge: 'badge-completed', color: 'var(--color-completed)' }
+};
+
+const TIMELINE_STEPS = [
+    { key: 'created_at', label: 'Job Created', status: 'pending_payment' },
+    { key: 'approved_at', label: 'Payment Confirmed & Approved', status: 'approved' },
+    { key: 'processing_started_at', label: 'Processing Started', status: 'in_progress' },
+    { key: 'finishing_started_at', label: 'Sent to Finishing', status: 'finishing' },
+    { key: 'completed_at', label: 'Job Completed', status: 'completed' }
+];
+
+export default function JobDetailPage() {
+    const params = useParams();
+    const router = useRouter();
+    const jobId = params.id;
+
+    const [job, setJob] = useState(null);
+    const [user, setUserState] = useState(null);
+    const [notifications, setNotifications] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(false);
+    const [showTicket, setShowTicket] = useState(false);
+    const [message, setMessage] = useState({ type: '', text: '' });
+
+    const loadJob = useCallback(async () => {
+        setLoading(true);
+        const res = await getJob(jobId);
+        if (res.success) {
+            setJob(res.data);
+            const u = getUser();
+            const uRoles = (u?.roles || u?.role || '').split(',').map(r => r.trim());
+            if (uRoles.some(r => ['admin', 'super_admin'].includes(r))) {
+                const notifRes = await getNotifications(jobId);
+                if (notifRes.success) setNotifications(notifRes.data);
+            }
+        }
+        setLoading(false);
+    }, [jobId]);
+
+    useEffect(() => {
+        setUserState(getUser());
+        loadJob();
+    }, [loadJob]);
+
+    async function handleAction(actionFn, actionName) {
+        if (!confirm(`Are you sure you want to ${actionName}?`)) return;
+        setActionLoading(true);
+        setMessage({ type: '', text: '' });
+
+        const res = await actionFn(jobId);
+        if (res.success) {
+            setMessage({ type: 'success', text: res.data.message });
+            await loadJob();
+        } else {
+            setMessage({ type: 'error', text: res.error || 'Action failed' });
+        }
+        setActionLoading(false);
+    }
+
+    if (loading) {
+        return <div className="loading-center"><div className="spinner"></div></div>;
+    }
+
+    if (!job) {
+        return (
+            <div className="empty-state">
+                <div className="empty-state-icon"><IconXCircle size={40} color="var(--color-pending)" /></div>
+                <div className="empty-state-title">Job not found</div>
+                <button className="btn btn-primary" onClick={() => router.push('/dashboard/jobs')}>
+                    Back to Jobs
+                </button>
+            </div>
+        );
+    }
+
+    const cfg = STATUS_CONFIG[job.status] || STATUS_CONFIG.pending_payment;
+    const isAdmin = hasAnyRole(['admin', 'super_admin']);
+
+    return (
+        <div className="job-detail">
+            <button
+                className="btn btn-ghost"
+                onClick={() => router.back()}
+                style={{ marginBottom: 'var(--space-lg)', gap: '6px' }}
+            >
+                <IconArrowLeft size={16} /> Back
+            </button>
+
+            {message.text && (
+                <div className={`alert ${message.type === 'success' ? 'alert-success' : 'alert-error'}`}>
+                    {message.text}
+                </div>
+            )}
+
+            {/* Header */}
+            <div className="job-detail-header">
+                <div>
+                    <div className="job-detail-id">{job.job_id}</div>
+                    {job.client_name && <div className="job-detail-client">{job.client_name}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
+                    <span className={`badge ${cfg.badge}`} style={{ fontSize: '0.875rem', padding: '6px 16px' }}>
+                        {cfg.label}
+                    </span>
+                    <button className="btn btn-ghost" onClick={() => setShowTicket(!showTicket)} style={{ gap: '6px' }}>
+                        <IconTicket size={16} /> {showTicket ? 'Hide' : 'View'} Ticket
+                    </button>
+                </div>
+            </div>
+
+            {/* BIG ACTION BUTTONS */}
+            <div style={{ marginBottom: 'var(--space-xl)' }}>
+                {job.status === 'pending_payment' && (hasAnyRole(['receptionist']) || isAdmin) && (
+                    <button
+                        className="big-btn big-btn-approve"
+                        onClick={() => handleAction(approveJob, 'approve this job')}
+                        disabled={actionLoading}
+                    >
+                        <IconCheckCircle size={22} />
+                        {actionLoading ? 'Processing...' : 'APPROVE \u2014 Payment Confirmed'}
+                    </button>
+                )}
+
+                {job.status === 'approved' && (hasAnyRole(['designer']) || isAdmin) && (
+                    <button
+                        className="big-btn big-btn-receive"
+                        onClick={() => handleAction(receiveJob, 'start processing this job')}
+                        disabled={actionLoading}
+                    >
+                        <IconWrench size={22} />
+                        {actionLoading ? 'Processing...' : 'RECEIVE JOB \u2014 Start Processing'}
+                    </button>
+                )}
+
+                {job.status === 'in_progress' && (hasAnyRole(['designer']) || isAdmin) && (
+                    <button
+                        className="big-btn big-btn-processing"
+                        onClick={() => handleAction(processingComplete, 'mark processing as complete')}
+                        disabled={actionLoading}
+                    >
+                        <IconScissors size={22} />
+                        {actionLoading ? 'Processing...' : 'PROCESSING COMPLETE \u2014 Send to Finishing'}
+                    </button>
+                )}
+
+                {job.status === 'finishing' && (hasAnyRole(['finisher']) || isAdmin) && (
+                    <button
+                        className="big-btn big-btn-complete"
+                        onClick={() => handleAction(completeJob, 'mark this job as completed')}
+                        disabled={actionLoading}
+                    >
+                        <IconTrophy size={22} />
+                        {actionLoading ? 'Processing...' : 'MARK COMPLETED \u2014 Ready for Pickup'}
+                    </button>
+                )}
+            </div>
+
+            {/* Details Grid */}
+            <div className="detail-grid">
+                {job.client_email && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Email</div>
+                        <div className="detail-item-value">{job.client_email}</div>
+                    </div>
+                )}
+                {job.client_phone && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Phone</div>
+                        <div className="detail-item-value">{job.client_phone}</div>
+                    </div>
+                )}
+                <div className="detail-item">
+                    <div className="detail-item-label">Job Type</div>
+                    <div className="detail-item-value" style={{ textTransform: 'capitalize' }}>
+                        {(job.job_type || '').replace(/_/g, ' ')}
+                    </div>
+                </div>
+                {job.total_amount !== undefined && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Total Amount</div>
+                        <div className="detail-item-value" style={{ fontSize: '1.25rem' }}>
+                            {'\u20B5'}{Number(job.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </div>
+                    </div>
+                )}
+                {job.payment_status && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Payment Status</div>
+                        <div className="detail-item-value" style={{
+                            color: job.payment_status === 'paid' ? 'var(--color-completed)' : 'var(--color-pending)'
+                        }}>
+                            {job.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                        </div>
+                    </div>
+                )}
+                {job.case_folder_url && (
+                    <div className="detail-item">
+                        <div className="detail-item-label">Case Folder</div>
+                        <div className="detail-item-value">
+                            <a href={job.case_folder_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <IconFolder size={14} /> Open in Drive <IconExternalLink size={12} />
+                            </a>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Description */}
+            {job.job_description && (
+                <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                    <h3 className="card-title" style={{ marginBottom: 'var(--space-sm)' }}>Job Description</h3>
+                    <p style={{ color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                        {job.job_description}
+                    </p>
+                </div>
+            )}
+
+            {/* Timeline */}
+            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-lg)' }}>Timeline</h3>
+                <div className="timeline">
+                    {TIMELINE_STEPS.map((step) => {
+                        const timestamp = job[step.key];
+                        const isDone = !!timestamp;
+                        const isCurrent = job.status === step.status;
+                        return (
+                            <div key={step.key} className="timeline-item">
+                                <div className={`timeline-dot ${isDone ? 'done' : ''} ${isCurrent ? 'active' : ''}`} />
+                                <div className="timeline-title" style={{ color: isDone ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                                    {step.label}
+                                </div>
+                                {timestamp && (
+                                    <div className="timeline-time">
+                                        {new Date(timestamp).toLocaleString()}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Notification History */}
+            {isAdmin && notifications.length > 0 && (
+                <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                    <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Notification History</h3>
+                    <div className="table-container">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Channel</th>
+                                    <th>Type</th>
+                                    <th>Recipient</th>
+                                    <th>Status</th>
+                                    <th>Sent At</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {notifications.map((n, i) => (
+                                    <tr key={i}>
+                                        <td style={{ textTransform: 'capitalize' }}>{n.channel}</td>
+                                        <td style={{ textTransform: 'capitalize' }}>{(n.notification_type || '').replace(/_/g, ' ')}</td>
+                                        <td>{n.recipient}</td>
+                                        <td>
+                                            <span className={`badge ${n.status === 'sent' ? 'badge-completed' : 'badge-pending'}`}>
+                                                {n.status}
+                                            </span>
+                                        </td>
+                                        <td>{n.sent_at ? new Date(n.sent_at).toLocaleString() : '\u2014'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Printable Job Ticket */}
+            {showTicket && (
+                <div className="job-ticket" id="job-ticket">
+                    <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                        <h2 style={{ margin: 0 }}>PopOut Studios</h2>
+                        <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Print Office Operations</p>
+                    </div>
+                    <hr style={{ border: 'none', borderTop: '2px solid #e5e7eb', margin: '16px 0' }} />
+                    <h3 style={{ textAlign: 'center', marginBottom: '16px' }}>JOB TICKET</h3>
+                    <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
+                        <tbody>
+                            <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Ticket #:</td><td style={{ padding: '8px 0' }}>{job.job_id}</td></tr>
+                            <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Client:</td><td style={{ padding: '8px 0' }}>{job.client_name}</td></tr>
+                            <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Date:</td><td style={{ padding: '8px 0' }}>{job.created_at ? new Date(job.created_at).toLocaleDateString() : '\u2014'}</td></tr>
+                            <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Job Type:</td><td style={{ padding: '8px 0', textTransform: 'capitalize' }}>{(job.job_type || '').replace(/_/g, ' ')}</td></tr>
+                            {job.job_description && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Description:</td><td style={{ padding: '8px 0' }}>{job.job_description}</td></tr>}
+                            {job.total_amount !== undefined && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Total:</td><td style={{ padding: '8px 0', fontSize: '1.125rem', fontWeight: 700 }}>{'\u20B5'}{Number(job.total_amount).toFixed(2)}</td></tr>}
+                            {job.payment_status && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Payment:</td><td style={{ padding: '8px 0' }}>{job.payment_status === 'paid' ? 'Paid' : 'Pending'}</td></tr>}
+                            <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Status:</td><td style={{ padding: '8px 0' }}>{cfg.label}</td></tr>
+                        </tbody>
+                    </table>
+                    <hr style={{ border: 'none', borderTop: '2px solid #e5e7eb', margin: '16px 0' }} />
+                    <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
+                        Thank you for choosing PopOut Studios
+                    </p>
+                    <div className="no-print" style={{ marginTop: '16px', textAlign: 'center' }}>
+                        <button className="btn btn-primary" onClick={() => window.print()} style={{ gap: '6px' }}>
+                            <IconPrinter size={16} /> Print Ticket
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
