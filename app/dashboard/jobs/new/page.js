@@ -116,14 +116,25 @@ export default function NewJobPage() {
     const lineItemsWithTotals = lineItems.map(item => {
         const itemBase = Number(item.rate || 0) * Number(item.quantity || 1);
         const itemCost = item.costType === 'percent' ? itemBase * (Number(item.cost || 0) / 100) : Number(item.cost || 0);
-        const designCost = item.design_service ? Number(item.design_cost || 0) : 0;
+        const rawDesignCost = item.design_service ? Number(item.design_cost || 0) : 0;
+        const designCost = (item.design_service && item.design_costType === 'percent') ? itemBase * (rawDesignCost / 100) : rawDesignCost;
         const baseWithCost = itemBase + itemCost + designCost;
         const itemDiscount = item.discountType === 'percent' ? baseWithCost * (Number(item.discount || 0) / 100) : Number(item.discount || 0);
         const itemTotal = Math.max(0, baseWithCost - itemDiscount);
         return { ...item, itemBase, itemCost, designCost, itemDiscount, itemTotal };
     });
 
-    const subtotal = lineItemsWithTotals.reduce((sum, item) => sum + item.itemTotal, 0);
+    const subtotalProducts = lineItemsWithTotals.reduce((sum, item) => sum + item.itemTotal, 0);
+
+    const standaloneDesignBase = form.requires_design ? Number(form.standalone_design_cost || 0) : 0;
+    const standaloneDesignDiscount = form.requires_design ? (
+        form.standalone_design_discount_type === 'percent'
+            ? standaloneDesignBase * (Number(form.standalone_design_discount || 0) / 100)
+            : Number(form.standalone_design_discount || 0)
+    ) : 0;
+    const standaloneDesignTotal = Math.max(0, standaloneDesignBase - standaloneDesignDiscount);
+
+    const subtotal = subtotalProducts + standaloneDesignTotal;
 
     const calculatedGlobalCost = globalCostType === 'percent' ? subtotal * (Number(globalCost || 0) / 100) : Number(globalCost || 0);
     const subtotalWithGlobalCost = subtotal + calculatedGlobalCost;
@@ -138,18 +149,22 @@ export default function NewJobPage() {
 
     // Save Draft to LocalStorage
     useEffect(() => {
-        if (!loading && (lineItems.length > 0 || form.client_name)) {
-            localStorage.setItem('printflow_draft_job', JSON.stringify({
-                form,
-                lineItems,
-                globalDiscount,
-                globalDiscountType,
-                globalCost,
-                globalCostType,
-                estTaxRate,
-                subtotal,
-                finalTotal
-            }));
+        if (!loading) {
+            if (lineItems.length > 0 || form.client_name || form.requires_design) {
+                localStorage.setItem('printflow_draft_job', JSON.stringify({
+                    form,
+                    lineItems,
+                    globalDiscount,
+                    globalDiscountType,
+                    globalCost,
+                    globalCostType,
+                    estTaxRate,
+                    subtotal,
+                    finalTotal
+                }));
+            } else {
+                localStorage.removeItem('printflow_draft_job');
+            }
         }
     }, [form, lineItems, globalDiscount, globalDiscountType, globalCost, globalCostType, estTaxRate, loading, subtotal, finalTotal]);
     function addCustomItem(name, rate, qty = 1, discount = 0, discountType = 'cedi') {
@@ -164,6 +179,8 @@ export default function NewJobPage() {
             discountType: discountType,
             design_service: false,
             design_cost: 0,
+            design_costType: 'cedi',
+            design_notes: '',
             unit: 'unit'
         };
         setLineItems([...lineItems, newItem]);
@@ -190,6 +207,8 @@ export default function NewJobPage() {
                 costType: 'cedi',
                 design_service: false,
                 design_cost: 0,
+                design_costType: 'cedi',
+                design_notes: '',
                 unit: product.unit || 'pcs'
             }]);
         }
@@ -209,7 +228,9 @@ export default function NewJobPage() {
             updated[index].design_cost = Math.max(0, parseFloat(value) || 0);
         } else if (field === 'design_service') {
             updated[index].design_service = value;
-        } else if (field === 'discountType' || field === 'costType') {
+        } else if (field === 'design_notes') {
+            updated[index].design_notes = value;
+        } else if (field === 'discountType' || field === 'costType' || field === 'design_costType') {
             updated[index][field] = value;
         }
         setLineItems(updated);
@@ -233,8 +254,8 @@ export default function NewJobPage() {
         e.preventDefault();
         if (!form.client_name.trim()) { setError('Client name is required'); return; }
         if (lineItems.length === 0) { setError('Add at least one product/service'); return; }
-        if (form.requires_design && !form.job_description.trim()) {
-            setError('Additional Notes are required when requesting Design Services');
+        if (form.requires_design && !form.standalone_design_details?.trim()) {
+            setError('Design Details are required when requesting a Standalone Design Service');
             return;
         }
 
@@ -250,6 +271,7 @@ export default function NewJobPage() {
             if (li.designCost > 0) detailedDescription += ` (Design: +\u20B5${li.designCost.toFixed(2)})`;
             if (li.itemDiscount > 0) detailedDescription += ` (Discount: -\u20B5${li.itemDiscount.toFixed(2)})`;
             detailedDescription += ` = \u20B5${li.itemTotal.toFixed(2)}\n`;
+            if (li.design_service && li.design_notes) detailedDescription += `   -> Design Notes: ${li.design_notes}\n`;
         });
 
         detailedDescription += `\nRaw Subtotal: \u20B5${subtotal.toFixed(2)}`;
@@ -268,6 +290,18 @@ export default function NewJobPage() {
 
         if (estTaxRate > 0) {
             detailedDescription += `\nEst. Tax (${estTaxRate}%): \u20B5${taxAmount.toFixed(2)}`;
+        }
+
+        if (form.requires_design) {
+            detailedDescription += `\n--- STANDALONE DESIGN SERVICE ---\n`;
+            detailedDescription += `   -> Base Cost: \u20B5${Number(form.standalone_design_cost || 0).toFixed(2)}\n`;
+            if (Number(form.standalone_design_discount || 0) > 0) {
+                const dType = form.standalone_design_discount_type === 'percent' ? '%' : '\u20B5';
+                detailedDescription += `   -> Discount: ${form.standalone_design_discount}${dType}\n`;
+            }
+            if (form.standalone_design_details) {
+                detailedDescription += `   -> Scope: ${form.standalone_design_details}\n`;
+            }
         }
 
         if (form.requires_delivery && form.delivery_fee > 0) {
@@ -453,85 +487,113 @@ export default function NewJobPage() {
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
                                 {lineItems.map((item, i) => (
-                                    <div key={`${item.productId}-${i}`} style={{
-                                        display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) auto auto auto auto', gap: 'var(--space-md)',
-                                        alignItems: 'center', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)',
-                                        borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)'
-                                    }}>
-                                        <div>
-                                            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{item.name}</div>
-                                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
-                                                {'\u20B5'}{item.rate.toFixed(2)} / {item.unit}
+                                    <div key={`${item.productId}-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: i < lineItems.length - 1 ? 'var(--space-md)' : 0 }}>
+                                        <div style={{
+                                            display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) auto auto auto auto', gap: 'var(--space-md)',
+                                            alignItems: 'center', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)',
+                                            borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)'
+                                        }}>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{item.name}</div>
+                                                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
+                                                    {'\u20B5'}{item.rate.toFixed(2)} / {item.unit}
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--color-bg-card)', padding: '2px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                                            <button type="button" className="btn btn-ghost" onClick={() => updateQuantityDelta(i, -1)} style={{ padding: '4px 6px', minWidth: 'auto', border: 'none' }}>
-                                                <IconMinus size={14} />
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--color-bg-card)', padding: '2px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                                                <button type="button" className="btn btn-ghost" onClick={() => updateQuantityDelta(i, -1)} style={{ padding: '4px 6px', minWidth: 'auto', border: 'none' }}>
+                                                    <IconMinus size={14} />
+                                                </button>
+                                                <input type="number" value={item.quantity} min="1" onChange={e => updateItemField(i, 'quantity', e.target.value)}
+                                                    style={{ width: '40px', textAlign: 'center', background: 'transparent', border: 'none', color: 'var(--color-text-primary)' }} />
+                                                <button type="button" className="btn btn-ghost" onClick={() => updateQuantityDelta(i, 1)} style={{ padding: '4px 6px', minWidth: 'auto', border: 'none' }}>
+                                                    <IconPlus size={14} />
+                                                </button>
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', width: '32px' }}>Cost</span>
+                                                    <input type="number" value={item.cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'cost', e.target.value)}
+                                                        style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                                    <select value={item.costType || 'cedi'} onChange={e => updateItemField(i, 'costType', e.target.value)}
+                                                        style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px' }}>
+                                                        <option value="cedi">{'\u20B5'}</option>
+                                                        <option value="percent">%</option>
+                                                    </select>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', width: '32px' }}>Disc</span>
+                                                    <input type="number" value={item.discount || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'discount', e.target.value)}
+                                                        style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                                    <select value={item.discountType || 'cedi'} onChange={e => updateItemField(i, 'discountType', e.target.value)}
+                                                        style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px' }}>
+                                                        <option value="cedi">{'\u20B5'}</option>
+                                                        <option value="percent">%</option>
+                                                    </select>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '4px', background: item.design_service ? 'var(--brand-primary)' : 'var(--color-bg-input)', padding: '2px 8px', borderRadius: 'var(--radius-full)', border: `1px solid ${item.design_service ? 'var(--brand-primary)' : 'var(--color-border)'}`, transition: 'all 0.2s', boxShadow: item.design_service ? '0 2px 4px rgba(56, 189, 248, 0.2)' : 'none' }}>
+                                                        <input type="checkbox" checked={item.design_service} onChange={e => {
+                                                            const isChecked = e.target.checked;
+                                                            updateItemField(i, 'design_service', isChecked);
+                                                            if (!isChecked) updateItemField(i, 'design_notes', '');
+                                                        }} style={{ display: 'none' }} />
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: item.design_service ? 700 : 500, color: item.design_service ? '#fff' : 'var(--color-text-muted)', whiteSpace: 'nowrap', transition: 'color 0.2s' }}>+Design</span>
+                                                    </label>
+                                                    {item.design_service && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+                                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Cost</span>
+                                                            <input type="number" value={item.design_cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
+                                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }}
+                                                                placeholder="Amt" />
+                                                            <select value={item.design_costType || 'cedi'} onChange={e => updateItemField(i, 'design_costType', e.target.value)}
+                                                                style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px', borderRadius: '4px', cursor: 'pointer' }}>
+                                                                <option value="cedi">{'\u20B5'}</option>
+                                                                <option value="percent">%</option>
+                                                            </select>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'right' }}>
+                                                {'\u20B5'}{(lineItemsWithTotals[i]?.itemTotal || 0).toFixed(2)}
+                                            </div>
+
+                                            <button type="button" onClick={() => removeItem(i)}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-pending)', padding: '4px', display: 'flex' }}>
+                                                <IconTrash size={16} />
                                             </button>
-                                            <input type="number" value={item.quantity} min="1" onChange={e => updateItemField(i, 'quantity', e.target.value)}
-                                                style={{ width: '40px', textAlign: 'center', background: 'transparent', border: 'none', color: 'var(--color-text-primary)' }} />
-                                            <button type="button" className="btn btn-ghost" onClick={() => updateQuantityDelta(i, 1)} style={{ padding: '4px 6px', minWidth: 'auto', border: 'none' }}>
-                                                <IconPlus size={14} />
-                                            </button>
                                         </div>
 
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', width: '32px' }}>Cost</span>
-                                                <input type="number" value={item.cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'cost', e.target.value)}
-                                                    style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                                <select value={item.costType || 'cedi'} onChange={e => updateItemField(i, 'costType', e.target.value)}
-                                                    style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px' }}>
-                                                    <option value="cedi">{'\u20B5'}</option>
-                                                    <option value="percent">%</option>
-                                                </select>
+                                        {/* POPUP / BUBBLE FOR DESIGN NOTES */}
+                                        {item.design_service && (
+                                            <div style={{ position: 'relative', marginTop: '2px', marginBottom: '8px', padding: '12px', background: 'rgba(56, 189, 248, 0.05)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', margin: '0 40px 0 16px' }}>
+                                                <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'var(--color-bg-primary)', borderTop: '1px solid var(--color-border)', borderLeft: '1px solid var(--color-border)', transform: 'rotate(45deg)' }}></div>
+                                                <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'rgba(56, 189, 248, 0.05)', borderTop: '1px solid transparent', borderLeft: '1px solid transparent', transform: 'rotate(45deg)' }}></div>
+                                                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--brand-primary)', margin: '0 0 8px 0' }}>Design Description:</p>
+                                                <textarea
+                                                    style={{ width: '100%', fontSize: '0.8125rem', padding: '8px', background: 'var(--color-bg-input)', border: '1px dashed var(--brand-primary)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', outline: 'none' }}
+                                                    rows={2}
+                                                    placeholder={`Provide detailed design instructions for ${item.name}...`}
+                                                    value={item.design_notes || ''}
+                                                    onChange={e => updateItemField(i, 'design_notes', e.target.value)}
+                                                />
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', width: '32px' }}>Disc</span>
-                                                <input type="number" value={item.discount || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'discount', e.target.value)}
-                                                    style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                                <select value={item.discountType || 'cedi'} onChange={e => updateItemField(i, 'discountType', e.target.value)}
-                                                    style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px' }}>
-                                                    <option value="cedi">{'\u20B5'}</option>
-                                                    <option value="percent">%</option>
-                                                </select>
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
-                                                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '4px' }}>
-                                                    <input type="checkbox" checked={item.design_service} onChange={e => updateItemField(i, 'design_service', e.target.checked)} style={{ cursor: 'pointer' }} />
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>+Design</span>
-                                                </label>
-                                                {item.design_service && (
-                                                    <input type="number" value={item.design_cost || 0} min="0" step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
-                                                        style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', marginLeft: '4px' }}
-                                                        placeholder="Cost" />
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div style={{ fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'right' }}>
-                                            {'\u20B5'}{(lineItemsWithTotals[i]?.itemTotal || 0).toFixed(2)}
-                                        </div>
-
-                                        <button type="button" onClick={() => removeItem(i)}
-                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-pending)', padding: '4px', display: 'flex' }}>
-                                            <IconTrash size={16} />
-                                        </button>
+                                        )}
                                     </div>
                                 ))}
-
-
                             </div>
                         )}
                     </div>
 
-                    {/* DESIGN & FILES */}
+                    {/* STANDALONE DESIGN SERVICE */}
                     <div style={{ marginBottom: 'var(--space-xl)', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-lg)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
                             <div>
-                                <h3 className="card-title" style={{ margin: 0 }}>Design Services</h3>
-                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>Does this job require design work?</p>
+                                <h3 className="card-title" style={{ margin: 0 }}>Standalone Design Service</h3>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>Is this a design-only job without physical products?</p>
                             </div>
                             <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                                 <input
@@ -540,10 +602,45 @@ export default function NewJobPage() {
                                     onChange={e => setForm(f => ({ ...f, requires_design: e.target.checked }))}
                                     style={{ width: '20px', height: '20px', marginRight: '8px', cursor: 'pointer' }}
                                 />
-                                <span style={{ fontWeight: 600 }}>Yes, requires design</span>
+                                <span style={{ fontWeight: 600 }}>Yes, Design Only</span>
                             </label>
                         </div>
 
+                        {form.requires_design && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                                <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+                                    <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Design Base Cost ({'\u20B5'})</label>
+                                        <input type="number" step="0.01" className="form-input" required={form.requires_design}
+                                            value={form.standalone_design_cost || ''} onChange={e => setForm(f => ({ ...f, standalone_design_cost: e.target.value }))}
+                                            placeholder="Base cost of design service..." />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Design Discount</label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input type="number" step="0.01" className="form-input"
+                                                value={form.standalone_design_discount || ''} onChange={e => setForm(f => ({ ...f, standalone_design_discount: e.target.value }))}
+                                                placeholder="Amount" style={{ flex: 2 }} />
+                                            <select className="form-input" value={form.standalone_design_discount_type || 'cedi'}
+                                                onChange={e => setForm(f => ({ ...f, standalone_design_discount_type: e.target.value }))} style={{ flex: 1 }}>
+                                                <option value="cedi">{'\u20B5'}</option>
+                                                <option value="percent">%</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label" style={{ fontWeight: 600 }}>Design Details & Scope *</label>
+                                    <textarea className="form-input" rows={3} required={form.requires_design}
+                                        value={form.standalone_design_details || ''} onChange={e => setForm(f => ({ ...f, standalone_design_details: e.target.value }))}
+                                        placeholder="Detailed instructions for the design team..." />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* DELIVERY SERVICES */}
+                    <div style={{ marginBottom: 'var(--space-xl)', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-lg)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
                             <div>
                                 <h3 className="card-title" style={{ margin: 0 }}>Delivery Services</h3>
@@ -654,70 +751,87 @@ export default function NewJobPage() {
                     {/* NOTES */}
                     <div className="form-group">
                         <label className="form-label" htmlFor="notes">
-                            Additional Notes {form.requires_design && <span style={{ color: 'var(--color-pending)', fontWeight: 'normal' }}>(Required for Design Services)</span>}
+                            Additional Notes
                         </label>
                         <textarea id="notes" className="form-input" rows={4}
-                            required={form.requires_design}
                             value={form.job_description} onChange={e => setForm(f => ({ ...f, job_description: e.target.value }))}
                             placeholder="Special instructions, delivery details, etc." />
                     </div>
 
-                    {lineItems.length > 0 && (
-                        <div id="order-totals-section" style={{
-                            marginBottom: 'var(--space-md)', padding: 'var(--space-md) var(--space-lg)',
-                            background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)',
-                            border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '8px'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                <span style={{ color: 'var(--color-text-muted)' }}>Subtotal:</span>
-                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>{'\u20B5'}{subtotal.toFixed(2)}</span>
-                            </div>
+                    {
+                        lineItems.length > 0 && (
+                            <div id="order-totals-section" style={{
+                                marginBottom: 'var(--space-md)', padding: 'var(--space-md) var(--space-lg)',
+                                background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '8px'
+                            }}>
+                                <div style={{ paddingBottom: '12px', borderBottom: '1px solid var(--color-border)', marginBottom: '8px' }}>
+                                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.875rem', color: 'var(--color-text-primary)' }}>Quote Breakdown</h4>
+                                    {lineItemsWithTotals.map((li, idx) => (
+                                        <div key={`summary-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginBottom: '6px', color: 'var(--color-text-muted)' }}>
+                                            <span style={{ display: 'flex', gap: '8px' }}><span>{li.quantity}x</span> <span>{li.name} {li.designCost > 0 ? <span style={{ color: 'var(--brand-primary)', fontSize: '0.7rem' }}>(+Design)</span> : ''}</span></span>
+                                            <span>{'\u20B5'}{li.itemTotal.toFixed(2)}</span>
+                                        </div>
+                                    ))}
+                                    {form.requires_design && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginBottom: '6px', color: 'var(--color-text-muted)' }}>
+                                            <span>Standalone Design Service</span>
+                                            <span>{'\u20B5'}{standaloneDesignTotal.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Overall Added Cost:
-                                    <input type="number" value={globalCost} min="0" step="0.01" onChange={e => setGlobalCost(Math.max(0, parseFloat(e.target.value) || 0))}
-                                        style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                    <select value={globalCostType} onChange={e => setGlobalCostType(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--color-text-primary)' }}>
-                                        <option value="cedi">{'\u20B5'}</option>
-                                        <option value="percent">%</option>
-                                    </select>
-                                </span>
-                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-text-primary)' }}>
-                                    +{'\u20B5'}{Number(calculatedGlobalCost).toFixed(2)}
-                                </span>
-                            </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                    <span style={{ color: 'var(--color-text-muted)' }}>Raw Subtotal:</span>
+                                    <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>{'\u20B5'}{subtotal.toFixed(2)}</span>
+                                </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Overall Discount:
-                                    <input type="number" value={globalDiscount} min="0" step="0.01" onChange={e => setGlobalDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                                        style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                    <select value={globalDiscountType} onChange={e => setGlobalDiscountType(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--color-text-primary)' }}>
-                                        <option value="cedi">{'\u20B5'}</option>
-                                        <option value="percent">%</option>
-                                    </select>
-                                </span>
-                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-pending)' }}>
-                                    -{'\u20B5'}{Number(calculatedGlobalDiscount).toFixed(2)}
-                                </span>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                    <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        Overall Added Cost:
+                                        <input type="number" value={globalCost} min="0" step="0.01" onChange={e => setGlobalCost(Math.max(0, parseFloat(e.target.value) || 0))}
+                                            style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        <select value={globalCostType} onChange={e => setGlobalCostType(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--color-text-primary)' }}>
+                                            <option value="cedi">{'\u20B5'}</option>
+                                            <option value="percent">%</option>
+                                        </select>
+                                    </span>
+                                    <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-text-primary)' }}>
+                                        +{'\u20B5'}{Number(calculatedGlobalCost).toFixed(2)}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                    <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        Overall Discount:
+                                        <input type="number" value={globalDiscount} min="0" step="0.01" onChange={e => setGlobalDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                            style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        <select value={globalDiscountType} onChange={e => setGlobalDiscountType(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--color-text-primary)' }}>
+                                            <option value="cedi">{'\u20B5'}</option>
+                                            <option value="percent">%</option>
+                                        </select>
+                                    </span>
+                                    <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-pending)' }}>
+                                        -{'\u20B5'}{Number(calculatedGlobalDiscount).toFixed(2)}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                    <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        Est. Tax: %
+                                        <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
+                                            style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                    </span>
+                                    <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
+                                        {'\u20B5'}{taxAmount.toFixed(2)}
+                                    </span>
+                                </div>
+                                <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                    <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
+                                    <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Est. Tax: %
-                                    <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
-                                        style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
-                                </span>
-                                <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
-                                    {'\u20B5'}{taxAmount.toFixed(2)}
-                                </span>
-                            </div>
-                            <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
-                                <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
-                                <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>
-                            </div>
-                        </div>
-                    )}
+                        )
+                    }
 
                     <button
                         type="submit"
@@ -727,7 +841,7 @@ export default function NewJobPage() {
                     >
                         {submitting ? 'Creating Job...' : `Create Job \u2014 \u20B5${finalTotal.toFixed(2)}`}
                     </button>
-                </form>
+                </form >
             </div >
 
             {/* PRODUCT PICKER MODAL */}

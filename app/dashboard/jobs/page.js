@@ -53,7 +53,37 @@ export default function JobsPage() {
     });
 
     if (loading) {
-        return <div className="loading-center"><div className="spinner"></div></div>;
+        return (
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+                    <div style={{ width: '120px', height: '28px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)', animation: 'pulse 1.5s infinite' }} />
+                    <div style={{ width: '100px', height: '36px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)', animation: 'pulse 1.5s infinite' }} />
+                </div>
+
+                <div className="filter-bar" style={{ opacity: 0.6, animation: 'pulse 1.5s infinite' }}>
+                    <div className="filter-tabs">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} style={{ width: '80px', height: '32px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-full)' }} />
+                        ))}
+                    </div>
+                </div>
+
+                <div className="job-list">
+                    {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} className="job-card" style={{ opacity: 0.7, animation: 'pulse 1.5s infinite' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ width: '150px', height: '20px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                                <div style={{ width: '200px', height: '16px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                                <div style={{ width: '80px', height: '24px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-full)' }} />
+                                <div style={{ width: '100px', height: '20px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
     }
 
     return (

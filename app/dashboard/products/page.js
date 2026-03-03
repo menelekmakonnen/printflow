@@ -97,7 +97,43 @@ export default function ProductsPage() {
         router.push('/dashboard/jobs/new');
     }
 
-    if (loading) return <div className="loading-center"><div className="spinner"></div></div>;
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', alignItems: 'stretch' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xl)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ width: '180px', height: '28px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)', animation: 'pulse 1.5s infinite' }} />
+                            <div style={{ width: '250px', height: '16px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)', animation: 'pulse 1.5s infinite' }} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-md)', opacity: 0.6, animation: 'pulse 1.5s infinite' }}>
+                        {[1, 2, 3].map(i => (
+                            <div key={i} style={{ width: '80px', height: '32px', background: 'var(--color-bg-secondary)', borderRadius: '20px' }} />
+                        ))}
+                    </div>
+
+                    <div className="product-grid">
+                        {[1, 2, 3, 4, 5, 6].map(i => (
+                            <div key={i} className="job-card" style={{ opacity: 0.7, animation: 'pulse 1.5s infinite', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '120px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div style={{ width: '120px', height: '20px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                                    <div style={{ width: '40px', height: '20px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)' }} />
+                                </div>
+                                <div style={{ width: '100%', height: '14px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                                <div style={{ width: '80%', height: '14px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                                <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ width: '70px', height: '24px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)' }} />
+                                    <div style={{ width: '100px', height: '32px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)' }} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const canEdit = hasAnyRole(['admin', 'super_admin']);
 

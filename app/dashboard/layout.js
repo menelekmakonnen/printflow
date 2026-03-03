@@ -196,8 +196,8 @@ export default function DashboardLayout({ children }) {
                 document.head.appendChild(link);
             }
 
-            const lightIcon = systemFavicon || systemLogo || '/images/logo-light.png';
-            const darkIcon = systemFavicon || systemLogoDark || '/images/logo-dark.png';
+            const lightIcon = systemFavicon || systemLogo || '/favicon.svg';
+            const darkIcon = systemFavicon || systemLogoDark || '/favicon.svg';
 
             link.href = document.hidden ? darkIcon : lightIcon;
         }
