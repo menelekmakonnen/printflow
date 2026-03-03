@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [systemLogo, setSystemLogo] = useState(null);
   const [systemLogoDark, setSystemLogoDark] = useState(null);
+  const [systemFavicon, setSystemFavicon] = useState(null);
   const [companyName, setCompanyName] = useState('PopOut Studios');
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export default function LoginPage() {
       if (res.success) {
         if (res.data.logo_base64) setSystemLogo(res.data.logo_base64);
         if (res.data.logo_dark_base64) setSystemLogoDark(res.data.logo_dark_base64);
+        if (res.data.favicon_base64) setSystemFavicon(res.data.favicon_base64);
         if (res.data.company_name) setCompanyName(res.data.company_name);
       }
     }
@@ -39,8 +41,8 @@ export default function LoginPage() {
         document.head.appendChild(link);
       }
 
-      const lightIcon = systemLogo || '/images/logo-light.png';
-      const darkIcon = systemLogoDark || '/images/logo-dark.png';
+      const lightIcon = systemFavicon || systemLogo || '/images/logo-light.png';
+      const darkIcon = systemFavicon || systemLogoDark || '/images/logo-dark.png';
 
       link.href = document.hidden ? darkIcon : lightIcon;
     }
@@ -49,7 +51,7 @@ export default function LoginPage() {
     updateFavicon();
 
     return () => document.removeEventListener("visibilitychange", updateFavicon);
-  }, [systemLogo, systemLogoDark]);
+  }, [systemLogo, systemLogoDark, systemFavicon]);
 
   async function handleSubmit(e) {
     e.preventDefault();

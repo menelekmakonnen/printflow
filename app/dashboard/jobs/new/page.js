@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createJob, uploadFile } from '@/lib/api';
-import { getProductsByCategory, getProductById } from '@/lib/products';
+import { createJob, uploadFile, getProducts, getConfig } from '@/lib/api';
 import { IconArrowLeft, IconPlus, IconMinus, IconX, IconPlusCircle, IconTrash } from '@/lib/icons';
 
 export default function NewJobPage() {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+
     const [form, setForm] = useState({
         client_name: '',
         client_email: '',
@@ -17,18 +18,105 @@ export default function NewJobPage() {
         job_description: '',
         requires_design: false
     });
+
     const [files, setFiles] = useState([]);
 
-    // Line items: { productId, name, rate, quantity, unit }
+    // Line items: { productId, name, rate, quantity, discount, unit }
     const [lineItems, setLineItems] = useState([]);
+    const [globalDiscount, setGlobalDiscount] = useState(0);
+    const [estTaxRate, setEstTaxRate] = useState(0);
+
+    const [productGroups, setProductGroups] = useState({});
     const [showProductPicker, setShowProductPicker] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
-    const productGroups = getProductsByCategory();
-    const total = lineItems.reduce((sum, item) => sum + (item.rate * item.quantity), 0);
+    // Load Initial Data
+    useEffect(() => {
+        async function loadInitialData() {
+            // First load config
+            const conf = await getConfig();
+            let defaultTax = 0;
+            if (conf.success && conf.data && conf.data.default_est_tax) {
+                defaultTax = Number(conf.data.default_est_tax) || 0;
+            }
+
+            // Check localStorage
+            const draftQuote = localStorage.getItem('printflow_draft_quote');
+            const draftJob = localStorage.getItem('printflow_draft_job');
+
+            if (draftQuote) {
+                try {
+                    const quote = JSON.parse(draftQuote);
+                    setLineItems(quote.items.map(q => ({
+                        productId: q.item_id,
+                        name: q.item_name,
+                        rate: Number(q.rate),
+                        quantity: q.qty,
+                        discount: 0,
+                        unit: q.unit || 'pcs'
+                    })));
+                    localStorage.removeItem('printflow_draft_quote');
+                    setEstTaxRate(defaultTax);
+                } catch (e) { }
+            } else if (draftJob) {
+                try {
+                    const parsed = JSON.parse(draftJob);
+                    if (parsed.form) setForm(parsed.form);
+                    if (parsed.lineItems) setLineItems(parsed.lineItems);
+                    if (parsed.globalDiscount !== undefined) setGlobalDiscount(parsed.globalDiscount);
+                    if (parsed.estTaxRate !== undefined) {
+                        setEstTaxRate(parsed.estTaxRate);
+                    } else {
+                        setEstTaxRate(defaultTax);
+                    }
+                } catch (e) { }
+            } else {
+                setEstTaxRate(defaultTax);
+            }
+
+            // Fetch products
+            const res = await getProducts('Active');
+            if (res.success) {
+                const groups = {};
+                res.data.forEach(p => {
+                    const t = p.product_type || 'Other';
+                    if (!groups[t]) groups[t] = [];
+                    groups[t].push({
+                        id: p.item_id,
+                        name: p.item_name,
+                        rate: Number(p.rate),
+                        unit: p.usage_unit || p.unit_name || 'pcs',
+                        description: p.description
+                    });
+                });
+                setProductGroups(groups);
+            }
+
+            setLoading(false);
+        }
+        loadInitialData();
+    }, []);
+
+    // Save Draft to LocalStorage
+    useEffect(() => {
+        if (!loading && (lineItems.length > 0 || form.client_name)) {
+            localStorage.setItem('printflow_draft_job', JSON.stringify({
+                form,
+                lineItems,
+                globalDiscount,
+                estTaxRate
+            }));
+        }
+    }, [form, lineItems, globalDiscount, estTaxRate, loading]);
+
+
+    // Calculations
+    const subtotal = lineItems.reduce((sum, item) => sum + ((item.rate * item.quantity) - (Number(item.discount) || 0)), 0);
+    const afterGlobalDiscount = Math.max(0, subtotal - (Number(globalDiscount) || 0));
+    const taxAmount = afterGlobalDiscount * (Number(estTaxRate) / 100);
+    const finalTotal = afterGlobalDiscount + taxAmount;
 
     function addProduct(product) {
-        // Check if already added
         const existing = lineItems.findIndex(li => li.productId === product.id);
         if (existing >= 0) {
             const updated = [...lineItems];
@@ -40,31 +128,28 @@ export default function NewJobPage() {
                 name: product.name,
                 rate: product.rate,
                 quantity: 1,
-                unit: product.unit || 'pcs',
-                description: product.description
+                discount: 0,
+                unit: product.unit || 'pcs'
             }]);
         }
         setShowProductPicker(false);
         setSearchTerm('');
     }
 
-    function updateQuantity(index, delta) {
+    function updateItemField(index, field, value) {
+        const updated = [...lineItems];
+        if (field === 'quantity') {
+            updated[index].quantity = Math.max(1, parseInt(value) || 1);
+        } else if (field === 'discount') {
+            updated[index].discount = Math.max(0, parseFloat(value) || 0);
+        }
+        setLineItems(updated);
+    }
+
+    function updateQuantityDelta(index, delta) {
         const updated = [...lineItems];
         updated[index].quantity = Math.max(1, updated[index].quantity + delta);
         setLineItems(updated);
-    }
-
-    function setQuantity(index, value) {
-        const updated = [...lineItems];
-        updated[index].quantity = Math.max(1, parseInt(value) || 1);
-        setLineItems(updated);
-    }
-
-    function handleFileChange(e) {
-        if (e.target.files) {
-            const newFiles = Array.from(e.target.files);
-            setFiles(prev => [...prev, ...newFiles]);
-        }
     }
 
     function removeFile(index) {
@@ -85,33 +170,52 @@ export default function NewJobPage() {
         }
 
         setError('');
-        setLoading(true);
+        setSubmitting(true);
 
-        // Build the job payload
         const jobType = lineItems.map(li => li.name).join(', ');
-        const description = lineItems.map(li =>
-            `${li.quantity}x ${li.name} @ \u20B5${li.rate.toFixed(2)} = \u20B5${(li.rate * li.quantity).toFixed(2)}`
-        ).join('\n') + (form.job_description ? '\n\nNotes: ' + form.job_description : '');
+
+        let detailedDescription = '--- QUOTE BREAKDOWN ---\n';
+        lineItems.forEach(li => {
+            detailedDescription += `${li.quantity}x ${li.name} @ \u20B5${li.rate.toFixed(2)}`;
+            if (li.discount > 0) detailedDescription += ` (Discount: -\u20B5${Number(li.discount).toFixed(2)})`;
+            detailedDescription += ` = \u20B5${((li.rate * li.quantity) - li.discount).toFixed(2)}\n`;
+        });
+
+        if (globalDiscount > 0) {
+            detailedDescription += `\nSubtotal: \u20B5${subtotal.toFixed(2)}`;
+            detailedDescription += `\nGlobal Discount: -\u20B5${Number(globalDiscount).toFixed(2)}`;
+            detailedDescription += `\nAfter Discount: \u20B5${afterGlobalDiscount.toFixed(2)}`;
+        }
+
+        if (estTaxRate > 0) {
+            detailedDescription += `\nEst. Tax (${estTaxRate}%): \u20B5${taxAmount.toFixed(2)}`;
+        }
+
+        detailedDescription += `\n\nFINAL TOTAL: \u20B5${finalTotal.toFixed(2)}`;
+
+        if (form.job_description) {
+            detailedDescription += '\n\n--- NOTES ---\n' + form.job_description;
+        }
 
         const payload = {
             client_name: form.client_name,
             client_email: form.client_email,
             client_phone: form.client_phone,
             job_type: jobType.length > 100 ? jobType.substring(0, 97) + '...' : jobType,
-            job_description: description,
-            total_amount: total,
+            job_description: detailedDescription,
+            total_amount: finalTotal,
             requires_design: form.requires_design
         };
 
         try {
-            // Pre-process files
+            // Process files concurrently
             const base64Files = await Promise.all(files.map(file => {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => resolve({
                         name: file.name,
                         type: file.type || 'application/octet-stream',
-                        base64: reader.result.split(',')[1] // Get base64 string
+                        base64: reader.result.split(',')[1]
                     });
                     reader.onerror = error => reject(error);
                     reader.readAsDataURL(file);
@@ -120,7 +224,7 @@ export default function NewJobPage() {
 
             const res = await createJob(payload);
             if (res.success) {
-                // Upload files if any
+                // Upload files to the created job folder
                 for (const fileData of base64Files) {
                     try {
                         await uploadFile(res.data.job_id, fileData.name, fileData.type, fileData.base64);
@@ -128,29 +232,33 @@ export default function NewJobPage() {
                         console.error('File upload failed:', uploadErr);
                     }
                 }
+
+                // Clear draft on success
+                localStorage.removeItem('printflow_draft_job');
                 router.push(`/dashboard/jobs/${res.data.job_id}`);
             } else {
                 setError(res.error || 'Failed to create job');
+                setSubmitting(false);
             }
         } catch (err) {
             setError('Connection error \u2014 please try again');
-        } finally {
-            setLoading(false);
+            setSubmitting(false);
         }
     }
 
-    // Filter products by search
     const filteredGroups = {};
     if (searchTerm) {
         const s = searchTerm.toLowerCase();
         Object.entries(productGroups).forEach(([cat, products]) => {
             const filtered = products.filter(p =>
-                p.name.toLowerCase().includes(s) || p.description.toLowerCase().includes(s)
+                p.name.toLowerCase().includes(s) || (p.description && p.description.toLowerCase().includes(s))
             );
             if (filtered.length > 0) filteredGroups[cat] = filtered;
         });
     }
     const displayGroups = searchTerm ? filteredGroups : productGroups;
+
+    if (loading) return <div className="loading-center"><div className="spinner"></div></div>;
 
     return (
         <div>
@@ -162,10 +270,22 @@ export default function NewJobPage() {
                 <IconArrowLeft size={16} /> Back
             </button>
 
-            <div className="card" style={{ maxWidth: '720px' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-lg)' }}>
-                    Create New Job
-                </h2>
+            <div className="card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Create New Job</h2>
+                    <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                        onClick={() => {
+                            if (confirm('Clear all draft data?')) {
+                                localStorage.removeItem('printflow_draft_job');
+                                window.location.reload();
+                            }
+                        }}
+                    >
+                        Clear Draft
+                    </button>
+                </div>
 
                 {error && <div className="alert alert-error">{error}</div>}
 
@@ -175,21 +295,21 @@ export default function NewJobPage() {
                     <div style={{ marginBottom: 'var(--space-xl)' }}>
                         <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Client Information</h3>
                         <div className="form-group">
-                            <label className="form-label" htmlFor="client_name">Client Name *</label>
-                            <input id="client_name" type="text" className="form-input" required
+                            <label className="form-label">Client Name *</label>
+                            <input type="text" className="form-input" required
                                 value={form.client_name} onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
                                 placeholder="e.g. John Mensah" />
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
                             <div className="form-group">
-                                <label className="form-label" htmlFor="client_email">Email</label>
-                                <input id="client_email" type="email" className="form-input"
+                                <label className="form-label">Email</label>
+                                <input type="email" className="form-input"
                                     value={form.client_email} onChange={e => setForm(f => ({ ...f, client_email: e.target.value }))}
                                     placeholder="email@example.com" />
                             </div>
                             <div className="form-group">
-                                <label className="form-label" htmlFor="client_phone">Phone</label>
-                                <input id="client_phone" type="tel" className="form-input"
+                                <label className="form-label">Phone</label>
+                                <input type="tel" className="form-input"
                                     value={form.client_phone} onChange={e => setForm(f => ({ ...f, client_phone: e.target.value }))}
                                     placeholder="024 XXX XXXX" />
                             </div>
@@ -212,34 +332,21 @@ export default function NewJobPage() {
 
                         {lineItems.length === 0 ? (
                             <div style={{
-                                border: '2px dashed var(--color-border)',
-                                borderRadius: 'var(--radius-lg)',
-                                padding: 'var(--space-xl)',
-                                textAlign: 'center',
-                                color: 'var(--color-text-muted)'
+                                border: '2px dashed var(--color-border)', borderRadius: 'var(--radius-lg)',
+                                padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--color-text-muted)'
                             }}>
                                 <p style={{ marginBottom: 'var(--space-sm)' }}>No items added yet</p>
-                                <button
-                                    type="button"
-                                    className="btn btn-ghost"
-                                    onClick={() => setShowProductPicker(true)}
-                                    style={{ gap: '4px' }}
-                                >
+                                <button type="button" className="btn btn-ghost" onClick={() => setShowProductPicker(true)} style={{ gap: '4px' }}>
                                     <IconPlusCircle size={16} /> Browse Products
                                 </button>
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
                                 {lineItems.map((item, i) => (
-                                    <div key={item.productId} style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr auto auto auto',
-                                        gap: 'var(--space-md)',
-                                        alignItems: 'center',
-                                        padding: 'var(--space-md)',
-                                        background: 'var(--color-bg-secondary)',
-                                        borderRadius: 'var(--radius-md)',
-                                        border: '1px solid var(--color-border)'
+                                    <div key={`${item.productId}-${i}`} style={{
+                                        display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) auto auto auto auto', gap: 'var(--space-md)',
+                                        alignItems: 'center', padding: 'var(--space-md)', background: 'var(--color-bg-secondary)',
+                                        borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)'
                                     }}>
                                         <div>
                                             <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{item.name}</div>
@@ -248,49 +355,68 @@ export default function NewJobPage() {
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <button type="button" className="btn btn-ghost" onClick={() => updateQuantity(i, -1)}
-                                                style={{ padding: '4px 8px', minWidth: 'auto' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--color-bg-card)', padding: '2px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                                            <button type="button" className="btn btn-ghost" onClick={() => updateQuantityDelta(i, -1)} style={{ padding: '4px 6px', minWidth: 'auto', border: 'none' }}>
                                                 <IconMinus size={14} />
                                             </button>
-                                            <input type="number" value={item.quantity} min="1"
-                                                onChange={e => setQuantity(i, e.target.value)}
-                                                style={{
-                                                    width: '52px', textAlign: 'center', padding: '4px',
-                                                    background: 'var(--color-bg-input)', border: '1px solid var(--color-border)',
-                                                    borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)',
-                                                    fontFamily: 'inherit', fontSize: '0.875rem'
-                                                }}
-                                            />
-                                            <button type="button" className="btn btn-ghost" onClick={() => updateQuantity(i, 1)}
-                                                style={{ padding: '4px 8px', minWidth: 'auto' }}>
+                                            <input type="number" value={item.quantity} min="1" onChange={e => updateItemField(i, 'quantity', e.target.value)}
+                                                style={{ width: '40px', textAlign: 'center', background: 'transparent', border: 'none', color: 'var(--color-text-primary)' }} />
+                                            <button type="button" className="btn btn-ghost" onClick={() => updateQuantityDelta(i, 1)} style={{ padding: '4px 6px', minWidth: 'auto', border: 'none' }}>
                                                 <IconPlus size={14} />
                                             </button>
                                         </div>
 
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Disc: {'\u20B5'}</span>
+                                            <input type="number" value={item.discount} min="0" step="0.01" onChange={e => updateItemField(i, 'discount', e.target.value)}
+                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        </div>
+
                                         <div style={{ fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'right' }}>
-                                            {'\u20B5'}{(item.rate * item.quantity).toFixed(2)}
+                                            {'\u20B5'}{((item.rate * item.quantity) - item.discount).toFixed(2)}
                                         </div>
 
                                         <button type="button" onClick={() => removeItem(i)}
-                                            style={{
-                                                background: 'none', border: 'none', cursor: 'pointer',
-                                                color: 'var(--color-pending)', padding: '4px', display: 'flex'
-                                            }}>
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-pending)', padding: '4px', display: 'flex' }}>
                                             <IconTrash size={16} />
                                         </button>
                                     </div>
                                 ))}
 
-                                {/* Total */}
+                                {/* Order Totals Section */}
                                 <div style={{
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    padding: 'var(--space-md) var(--space-lg)',
-                                    background: 'var(--color-accent)', borderRadius: 'var(--radius-md)',
-                                    color: '#fff', fontWeight: 700
+                                    marginTop: 'var(--space-md)', padding: 'var(--space-md) var(--space-lg)',
+                                    background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)',
+                                    border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '8px'
                                 }}>
-                                    <span>Total ({lineItems.length} item{lineItems.length !== 1 ? 's' : ''})</span>
-                                    <span style={{ fontSize: '1.25rem' }}>{'\u20B5'}{total.toFixed(2)}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                        <span style={{ color: 'var(--color-text-muted)' }}>Subtotal:</span>
+                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>{'\u20B5'}{subtotal.toFixed(2)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                        <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            Overall Discount: {'\u20B5'}
+                                            <input type="number" value={globalDiscount} min="0" step="0.01" onChange={e => setGlobalDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                style={{ width: '80px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        </span>
+                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right', color: 'var(--color-pending)' }}>
+                                            -{'\u20B5'}{Number(globalDiscount).toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                        <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            Est. Tax: %
+                                            <input type="number" value={estTaxRate} min="0" step="0.1" onChange={e => setEstTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }} />
+                                        </span>
+                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
+                                            {'\u20B5'}{taxAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
+                                        <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
+                                        <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -316,25 +442,41 @@ export default function NewJobPage() {
 
                         {!form.requires_design && (
                             <div style={{ marginTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-md)' }}>
-                                <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Client Files</h4>
-                                <input
-                                    type="file"
-                                    multiple
-                                    onChange={handleFileChange}
-                                    style={{ marginBottom: '8px', display: 'block' }}
-                                />
-                                {files.length > 0 && (
-                                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.85rem' }}>
-                                        {files.map((file, i) => (
-                                            <li key={i} style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--color-bg-card)', padding: '6px 12px', marginBottom: '4px', borderRadius: '4px' }}>
-                                                <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
-                                                <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: 'var(--color-pending)', cursor: 'pointer' }}>
-                                                    <IconX size={14} />
-                                                </button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
+                                <h4 style={{ fontSize: '0.9rem', marginBottom: '12px' }}>Client Files</h4>
+
+                                {/* Custom Multi-file uploader UI */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                                        <label className="btn btn-secondary" style={{ cursor: 'pointer', padding: '8px 16px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                            <IconPlus size={16} /> Select Files
+                                            <input
+                                                type="file"
+                                                multiple
+                                                onChange={e => e.target.files && setFiles(prev => [...prev, ...Array.from(e.target.files)])}
+                                                style={{ display: 'none' }}
+                                            />
+                                        </label>
+                                        <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+                                            Supports multiple files (images, PDFs, documents)
+                                        </span>
+                                    </div>
+
+                                    {files.length > 0 && (
+                                        <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {files.map((file, i) => (
+                                                <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-surface)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text-primary)' }}>{file.name}</span>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>({(file.size / 1024).toFixed(1)} KB)</span>
+                                                    </div>
+                                                    <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: 'var(--color-pending)', cursor: 'pointer', padding: '4px', display: 'flex' }} title="Remove file">
+                                                        <IconX size={16} />
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -344,7 +486,7 @@ export default function NewJobPage() {
                         <label className="form-label" htmlFor="notes">
                             Additional Notes {form.requires_design && <span style={{ color: 'var(--color-pending)', fontWeight: 'normal' }}>(Required for Design Services)</span>}
                         </label>
-                        <textarea id="notes" className="form-input" rows={3}
+                        <textarea id="notes" className="form-input" rows={4}
                             required={form.requires_design}
                             value={form.job_description} onChange={e => setForm(f => ({ ...f, job_description: e.target.value }))}
                             placeholder="Special instructions, delivery details, etc." />
@@ -353,10 +495,10 @@ export default function NewJobPage() {
                     <button
                         type="submit"
                         className="btn btn-primary btn-full"
-                        disabled={loading || !form.client_name || lineItems.length === 0}
-                        style={{ padding: '14px', fontSize: '1rem', marginTop: 'var(--space-md)' }}
+                        disabled={submitting || !form.client_name || lineItems.length === 0}
+                        style={{ padding: '16px', fontSize: '1.1rem', marginTop: 'var(--space-md)', fontWeight: 600 }}
                     >
-                        {loading ? 'Creating Job...' : `Create Job \u2014 \u20B5${total.toFixed(2)}`}
+                        {submitting ? 'Creating Job...' : `Create Job \u2014 \u20B5${finalTotal.toFixed(2)}`}
                     </button>
                 </form>
             </div>
@@ -364,7 +506,7 @@ export default function NewJobPage() {
             {/* PRODUCT PICKER MODAL */}
             {showProductPicker && (
                 <div className="modal-overlay" onClick={() => { setShowProductPicker(false); setSearchTerm(''); }}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                    <div className="modal modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
                         <div className="modal-header">
                             <h3 className="modal-title">Select Product / Service</h3>
                             <button className="modal-close" onClick={() => { setShowProductPicker(false); setSearchTerm(''); }}>
@@ -394,40 +536,40 @@ export default function NewJobPage() {
                                     }}>
                                         {category}
                                     </div>
-                                    {products.map(product => {
-                                        const alreadyAdded = lineItems.some(li => li.productId === product.id);
-                                        return (
-                                            <button
-                                                key={product.id}
-                                                type="button"
-                                                onClick={() => addProduct(product)}
-                                                style={{
-                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                                    width: '100%', padding: '10px 12px',
-                                                    background: alreadyAdded ? 'var(--color-progress-bg)' : 'transparent',
-                                                    border: 'none', borderRadius: 'var(--radius-sm)',
-                                                    cursor: 'pointer', textAlign: 'left',
-                                                    color: 'var(--color-text-primary)', fontFamily: 'inherit',
-                                                    transition: 'background 150ms ease'
-                                                }}
-                                                onMouseEnter={e => { if (!alreadyAdded) e.target.style.background = 'var(--color-bg-card-hover)'; }}
-                                                onMouseLeave={e => { if (!alreadyAdded) e.target.style.background = 'transparent'; }}
-                                            >
-                                                <div>
-                                                    <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>
-                                                        {product.name}
-                                                        {alreadyAdded && <span style={{ color: 'var(--color-accent)', marginLeft: '8px', fontSize: '0.75rem' }}>Added</span>}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {products.map(product => {
+                                            const alreadyAdded = lineItems.some(li => li.productId === product.id);
+                                            return (
+                                                <button
+                                                    key={product.id}
+                                                    type="button"
+                                                    onClick={() => addProduct(product)}
+                                                    style={{
+                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                        width: '100%', padding: '10px 12px',
+                                                        background: alreadyAdded ? 'var(--color-progress-bg)' : 'var(--color-bg-secondary)',
+                                                        border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
+                                                        cursor: 'pointer', textAlign: 'left', color: 'var(--color-text-primary)'
+                                                    }}
+                                                >
+                                                    <div>
+                                                        <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                                                            {product.name}
+                                                            {alreadyAdded && <span style={{ color: 'var(--color-accent)', marginLeft: '8px', fontSize: '0.75rem' }}>Added</span>}
+                                                        </div>
+                                                        {product.description && (
+                                                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: '2px', maxWidth: '400px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {product.description}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: '2px' }}>
-                                                        {product.description}
+                                                    <div style={{ fontWeight: 700, fontSize: '0.875rem', marginLeft: 'var(--space-md)' }}>
+                                                        {'\u20B5'}{product.rate.toFixed(2)}
                                                     </div>
-                                                </div>
-                                                <div style={{ fontWeight: 700, fontSize: '0.875rem', whiteSpace: 'nowrap', marginLeft: 'var(--space-md)', color: 'var(--color-accent)' }}>
-                                                    {'\u20B5'}{product.rate.toFixed(2)}
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             ))}
                             {Object.keys(displayGroups).length === 0 && (

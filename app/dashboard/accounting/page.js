@@ -7,7 +7,9 @@ import { IconScroll, IconCheckCircle, IconXCircle, IconClipboard } from '@/lib/i
 export default function AccountingPage() {
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterDate, setFilterDate] = useState('all'); // all, this_month, last_month, this_year
+    const [filterDate, setFilterDate] = useState('month'); // day, week, month, custom
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
 
     useEffect(() => {
         async function loadData() {
@@ -18,27 +20,47 @@ export default function AccountingPage() {
             setLoading(false);
         }
         loadData();
+
+        // Default custom to today
+        const today = new Date().toISOString().split('T')[0];
+        setCustomStart(today);
+        setCustomEnd(today);
     }, []);
 
     const filteredJobs = useMemo(() => {
         const now = new Date();
+        now.setHours(23, 59, 59, 999);
+
+        const startOfDay = new Date(now);
+        startOfDay.setHours(0, 0, 0, 0);
+
         return jobs.filter(job => {
             if (!job.created_at) return false;
             const jobDate = new Date(job.created_at);
 
-            if (filterDate === 'this_month') {
-                return jobDate.getMonth() === now.getMonth() && jobDate.getFullYear() === now.getFullYear();
+            if (filterDate === 'day') {
+                return jobDate >= startOfDay && jobDate <= now;
             }
-            if (filterDate === 'last_month') {
-                const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                return jobDate.getMonth() === lastMonth.getMonth() && jobDate.getFullYear() === lastMonth.getFullYear();
+            if (filterDate === 'week') {
+                const startOfWeek = new Date(startOfDay);
+                startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sunday
+                return jobDate >= startOfWeek && jobDate <= now;
             }
-            if (filterDate === 'this_year') {
-                return jobDate.getFullYear() === now.getFullYear();
+            if (filterDate === 'month') {
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                return jobDate >= startOfMonth && jobDate <= now;
+            }
+            if (filterDate === 'custom') {
+                if (!customStart) return true;
+                const s = new Date(customStart);
+                s.setHours(0, 0, 0, 0);
+                const e = customEnd ? new Date(customEnd) : new Date();
+                e.setHours(23, 59, 59, 999);
+                return jobDate >= s && jobDate <= e;
             }
             return true;
         }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    }, [jobs, filterDate]);
+    }, [jobs, filterDate, customStart, customEnd]);
 
     // Calculate Summaries
     const totalInvoiced = filteredJobs.reduce((sum, j) => sum + Number(j.total_amount || 0), 0);
@@ -47,8 +69,16 @@ export default function AccountingPage() {
     const totalPaid = paidJobs.reduce((sum, j) => sum + Number(j.total_amount || 0), 0);
     const totalOutstanding = unpaidJobs.reduce((sum, j) => sum + Number(j.total_amount || 0), 0);
 
-    // Approximate 5% VAT or similar (just for display in auditting)
-    const estimatedTax = totalPaid * 0.05;
+    // Extract precise tax from Job Description if available, else fallback to 0
+    let totalTaxExact = 0;
+    paidJobs.forEach(j => {
+        if (j.job_description) {
+            const taxMatch = j.job_description.match(/Est\. Tax.*?:\s*\u20B5([\d.]+)/);
+            if (taxMatch && taxMatch[1]) {
+                totalTaxExact += parseFloat(taxMatch[1]);
+            }
+        }
+    });
 
     if (!hasAnyRole(['admin', 'super_admin'])) {
         return <div className="loading-center">Unauthorized</div>;
@@ -58,23 +88,46 @@ export default function AccountingPage() {
 
     return (
         <div style={{ paddingBottom: 'var(--space-xl)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xl)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-xl)', flexWrap: 'wrap', gap: 'var(--space-lg)' }}>
                 <div>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Accounting & Audit</h2>
                     <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Financial summaries and transaction records</p>
                 </div>
-                <div>
-                    <select
-                        className="form-input"
-                        value={filterDate}
-                        onChange={e => setFilterDate(e.target.value)}
-                        style={{ padding: '8px 16px', borderRadius: 'var(--radius-full)' }}
-                    >
-                        <option value="all">All Time</option>
-                        <option value="this_month">This Month</option>
-                        <option value="last_month">Last Month</option>
-                        <option value="this_year">This Year</option>
-                    </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text-muted)' }}>Range:</span>
+                        <select
+                            className="form-input"
+                            value={filterDate}
+                            onChange={e => setFilterDate(e.target.value)}
+                            style={{ padding: '8px 16px', borderRadius: 'var(--radius-full)', width: 'auto' }}
+                        >
+                            <option value="day">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+
+                    {filterDate === 'custom' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--color-bg-secondary)', padding: '4px 12px', borderRadius: 'var(--radius-full)' }}>
+                            <input
+                                type="date"
+                                className="form-input"
+                                style={{ padding: '4px 8px', height: 'auto', border: 'none', background: 'transparent' }}
+                                value={customStart}
+                                onChange={e => setCustomStart(e.target.value)}
+                            />
+                            <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                            <input
+                                type="date"
+                                className="form-input"
+                                style={{ padding: '4px 8px', height: 'auto', border: 'none', background: 'transparent' }}
+                                value={customEnd}
+                                onChange={e => setCustomEnd(e.target.value)}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -130,13 +183,13 @@ export default function AccountingPage() {
                         <div style={{ width: 40, height: 40, borderRadius: '12px', background: 'var(--color-bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
                             <IconClipboard size={20} />
                         </div>
-                        <div style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>Est. Tax (5%)</div>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>Tax Collected</div>
                     </div>
                     <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>
-                        {'\u20B5'}{estimatedTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {'\u20B5'}{totalTaxExact.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                        Calculated on Paid amount
+                        Extracted from Paid job data
                     </div>
                 </div>
             </div>
@@ -151,35 +204,43 @@ export default function AccountingPage() {
                                 <th>Date</th>
                                 <th>Job ID</th>
                                 <th>Client</th>
-                                <th>Amount</th>
-                                <th>Payment Status</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Payment</th>
+                                <th style={{ textAlign: 'right' }}>Amount ({'\u20B5'})</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredJobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-muted)' }}>
-                                        No financial records found for this period.
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-muted)' }}>
+                                        No jobs found for this period.
                                     </td>
                                 </tr>
                             ) : filteredJobs.map(job => (
                                 <tr key={job.job_id}>
-                                    <td style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                                        {new Date(job.created_at).toLocaleDateString()}
-                                    </td>
-                                    <td style={{ fontWeight: 500 }}>
-                                        <a href={`/dashboard/jobs/${job.job_id}`} style={{ color: 'var(--color-accent)', textDecoration: 'none' }}>
+                                    <td>{new Date(job.created_at).toLocaleDateString()}</td>
+                                    <td>
+                                        <div style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
                                             {job.job_id}
-                                        </a>
+                                        </div>
                                     </td>
-                                    <td>{job.client_name}</td>
-                                    <td style={{ fontWeight: 600 }}>
-                                        {'\u20B5'}{Number(job.total_amount || 0).toFixed(2)}
+                                    <td style={{ fontWeight: 500 }}>{job.client_name}</td>
+                                    <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {job.job_type}
+                                    </td>
+                                    <td>
+                                        <span className={`badge badge-${job.status}`}>
+                                            {job.status.replace('_', ' ')}
+                                        </span>
                                     </td>
                                     <td>
                                         <span className={`badge ${job.payment_status === 'paid' ? 'badge-completed' : 'badge-pending'}`}>
-                                            {job.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                                            {job.payment_status}
                                         </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                        {Number(job.total_amount).toFixed(2)}
                                     </td>
                                 </tr>
                             ))}

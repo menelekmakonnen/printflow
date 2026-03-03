@@ -14,6 +14,7 @@ const SHEET_NOTIFICATIONS = 'Notification Log';
 const SHEET_CONFIG = 'Config';
 const SHEET_ACTIVITY = 'Activity Log';
 const SHEET_INVENTORY = 'Inventory';
+const SHEET_PRODUCTS = 'Products';
 
 /**
  * Get the main spreadsheet

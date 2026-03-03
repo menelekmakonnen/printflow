@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getConfig, updateConfig, getUser, hasAnyRole } from '@/lib/api';
 import { IconPlus, IconX, IconGear, IconInfo } from '@/lib/icons';
-import { useCallback } from 'react';
 
 export default function SettingsPage() {
     const [config, setConfig] = useState(null);
@@ -15,6 +14,7 @@ export default function SettingsPage() {
     const [companyName, setCompanyName] = useState('');
     const [logoBase64, setLogoBase64] = useState('');
     const [logoDarkBase64, setLogoDarkBase64] = useState('');
+    const [faviconBase64, setFaviconBase64] = useState('');
 
     const loadConfig = useCallback(async () => {
         setLoading(true);
@@ -24,6 +24,7 @@ export default function SettingsPage() {
             setCompanyName(res.data.company_name || 'PopOut Studios');
             setLogoBase64(res.data.logo_base64 || '');
             setLogoDarkBase64(res.data.logo_dark_base64 || '');
+            setFaviconBase64(res.data.favicon_base64 || '');
         }
         setLoading(false);
     }, []);
@@ -52,7 +53,7 @@ export default function SettingsPage() {
         const file = e.target.files[0];
         if (!file) return;
 
-        if (file.size > 500 * 1024) { // 500KB limit to be safe for Google Sheets
+        if (file.size > 500 * 1024) {
             setMessage({ type: 'error', text: 'Logo image must be less than 500KB.' });
             return;
         }
@@ -71,6 +72,33 @@ export default function SettingsPage() {
                 } else {
                     setLogoBase64(base64Data);
                 }
+            } else {
+                setMessage({ type: 'error', text: res.error });
+            }
+            setSaving(false);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async function handleFaviconUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 200 * 1024) {
+            setMessage({ type: 'error', text: 'Favicon image must be less than 200KB.' });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64Data = reader.result;
+            setSaving(true);
+            setMessage({ type: '', text: '' });
+
+            const res = await updateConfig({ favicon_base64: base64Data });
+            if (res.success) {
+                setMessage({ type: 'success', text: 'System Favicon uploaded successfully' });
+                setFaviconBase64(base64Data);
             } else {
                 setMessage({ type: 'error', text: res.error });
             }
@@ -154,7 +182,7 @@ export default function SettingsPage() {
             <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>System Logos</h3>
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
-                    Upload standard (light background) and dark mode (dark background) logos. Used in the sidebar and as favicons. Max 500KB.
+                    Upload standard (light background), dark mode (dark background) logos, and a square Favicon. Max 500KB.
                 </p>
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xl)' }}>
@@ -164,7 +192,7 @@ export default function SettingsPage() {
                         <div style={{
                             border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
                             display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
-                            background: '#f8fafc' // Force light background for preview
+                            background: '#f8fafc'
                         }}>
                             <div style={{
                                 width: '64px', height: '64px', background: '#fff', borderRadius: '8px',
@@ -192,7 +220,7 @@ export default function SettingsPage() {
                         <div style={{
                             border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
                             display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
-                            background: '#0f172a' // Force dark background for preview
+                            background: '#0f172a'
                         }}>
                             <div style={{
                                 width: '64px', height: '64px', background: '#1e293b', borderRadius: '8px',
@@ -213,13 +241,39 @@ export default function SettingsPage() {
                             </div>
                         </div>
                     </div>
+
+                    {/* System Favicon */}
+                    <div style={{ flex: '1 1 300px' }}>
+                        <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>System Favicon</h4>
+                        <div style={{
+                            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md)',
+                            display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: '8px',
+                            background: '#f8fafc'
+                        }}>
+                            <div style={{
+                                width: '64px', height: '64px', background: '#e2e8f0', borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                                flexShrink: 0, boxShadow: 'var(--shadow-sm)'
+                            }}>
+                                {faviconBase64 ? (
+                                    <img src={faviconBase64} alt="Favicon" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                ) : (
+                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>None</span>
+                                )}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <input type="file" id="favicon-upload" accept="image/*" style={{ display: 'none' }} onChange={handleFaviconUpload} disabled={saving} />
+                                <label htmlFor="favicon-upload" className="btn btn-ghost" style={{ fontSize: '0.875rem', padding: '6px 12px', cursor: 'pointer' }}>
+                                    {saving ? 'Uploading...' : 'Choose Square Element'}
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-
             {/* Job Types */}
-            < div className="card" style={{ marginBottom: 'var(--space-xl)' }
-            }>
+            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Job Types</h3>
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', marginBottom: 'var(--space-md)' }}>
                     Manage the types of print jobs available in the system. These appear in the New Job form.
@@ -254,10 +308,10 @@ export default function SettingsPage() {
                         <IconPlus size={16} /> Add
                     </button>
                 </div>
-            </div >
+            </div>
 
             {/* Currency */}
-            < div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Currency</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                     <div style={{ fontSize: '2rem', fontWeight: 700 }}>{'\u20B5'}</div>
@@ -268,10 +322,10 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 </div>
-            </div >
+            </div>
 
             {/* System Info */}
-            < div className="card" >
+            <div className="card">
                 <h3 className="card-title" style={{ marginBottom: 'var(--space-md)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <IconInfo size={16} /> System Information
                 </h3>
@@ -284,7 +338,7 @@ export default function SettingsPage() {
                         <span style={{ fontWeight: 600 }}>Storage:</span><span>Google Drive</span>
                     </div>
                 </div>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 }

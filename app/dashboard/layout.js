@@ -8,7 +8,7 @@ import {
     IconDashboard, IconClipboard, IconPlusCircle, IconGear,
     IconUsers, IconBell, IconScroll, IconQueue, IconScissors,
     IconMenu, IconLogout, IconChevronLeft, IconChevronRight,
-    IconCedis, IconX
+    IconCedis, IconX, IconTag
 } from '@/lib/icons';
 import Link from 'next/link';
 
@@ -36,6 +36,7 @@ function buildNavSections(roles) {
 
     // Receptionist or Admin can see jobs
     if (roles.some(r => ['receptionist', 'admin', 'super_admin'].includes(r))) {
+        addItem('Operations', { href: '/dashboard/products', icon: IconTag, label: 'Products & Services' });
         addItem('Operations', { href: '/dashboard/jobs/new', icon: IconPlusCircle, label: 'New Job' });
         addItem('Operations', { href: '/dashboard/jobs', icon: IconClipboard, label: 'All Jobs' });
     }
@@ -91,6 +92,7 @@ export default function DashboardLayout({ children }) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [systemLogo, setSystemLogo] = useState(null);
     const [systemLogoDark, setSystemLogoDark] = useState(null);
+    const [systemFavicon, setSystemFavicon] = useState(null);
 
     // Profile Edit State
     const [showProfileModal, setShowProfileModal] = useState(false);
@@ -110,6 +112,7 @@ export default function DashboardLayout({ children }) {
             if (res.success) {
                 if (res.data.logo_base64) setSystemLogo(res.data.logo_base64);
                 if (res.data.logo_dark_base64) setSystemLogoDark(res.data.logo_dark_base64);
+                if (res.data.favicon_base64) setSystemFavicon(res.data.favicon_base64);
             }
         }
         fetchLogo();
@@ -124,8 +127,8 @@ export default function DashboardLayout({ children }) {
                 document.head.appendChild(link);
             }
 
-            const lightIcon = systemLogo || '/images/logo-light.png';
-            const darkIcon = systemLogoDark || '/images/logo-dark.png';
+            const lightIcon = systemFavicon || systemLogo || '/images/logo-light.png';
+            const darkIcon = systemFavicon || systemLogoDark || '/images/logo-dark.png';
 
             link.href = document.hidden ? darkIcon : lightIcon;
         }
@@ -134,7 +137,7 @@ export default function DashboardLayout({ children }) {
         updateFavicon(); // Initialize
 
         return () => document.removeEventListener("visibilitychange", updateFavicon);
-    }, [systemLogo, systemLogoDark]);
+    }, [systemLogo, systemLogoDark, systemFavicon]);
 
     function handleLogout() {
         apiLogout();
@@ -215,6 +218,10 @@ export default function DashboardLayout({ children }) {
                     {systemLogo && !sidebarCollapsed ? (
                         <Link href="/dashboard" style={{ display: 'block', textAlign: 'center', width: '100%' }}>
                             <img src={systemLogo} alt="Logo" style={{ maxHeight: '44px', maxWidth: '100%', objectFit: 'contain' }} />
+                        </Link>
+                    ) : sidebarCollapsed && systemFavicon ? (
+                        <Link href="/dashboard" style={{ display: 'block', textAlign: 'center', width: '100%' }}>
+                            <img src={systemFavicon} alt="Icon" style={{ maxHeight: '32px', maxWidth: '100%', objectFit: 'contain' }} />
                         </Link>
                     ) : (
                         <Link href="/dashboard" style={{ textDecoration: 'none' }}>
