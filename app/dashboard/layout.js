@@ -8,7 +8,7 @@ import {
     IconDashboard, IconClipboard, IconPlusCircle, IconGear,
     IconUsers, IconBell, IconScroll, IconQueue, IconScissors,
     IconMenu, IconLogout, IconChevronLeft, IconChevronRight,
-    IconCedis, IconX, IconTag
+    IconCedis, IconX, IconTag, IconShieldAlert
 } from '@/lib/icons';
 import Link from 'next/link';
 import Image from 'next/image';
