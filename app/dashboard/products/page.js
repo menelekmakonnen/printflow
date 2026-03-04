@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getProducts, updateProduct, getUser, hasAnyRole } from '@/lib/api';
+import { getProducts, updateProduct, addProduct, getUser, hasAnyRole } from '@/lib/api';
 import { IconPlus, IconX, IconCedis } from '@/lib/icons';
 
 export default function ProductsPage() {
@@ -40,26 +40,59 @@ export default function ProductsPage() {
         setShowModal(true);
     }
 
+    function openCreate() {
+        setEditingItem({
+            isNew: true,
+            item_id: 'new',
+            item_name: '',
+            rate: '',
+            description: '',
+            product_type: 'Goods',
+            status: 'Active'
+        });
+        setMessage({ type: '', text: '' });
+        setShowModal(true);
+    }
+
     async function handleEditSubmit(e) {
         e.preventDefault();
         setFormLoading(true);
         setMessage({ type: '', text: '' });
 
         try {
-            const res = await updateProduct(editingItem.item_id, {
-                rate: editingItem.rate,
-                description: editingItem.description
-            });
+            let res;
+            if (editingItem.isNew) {
+                if (!editingItem.item_name || !editingItem.rate) {
+                    setMessage({ type: 'error', text: 'Name and Rate are required.' });
+                    setFormLoading(false);
+                    return;
+                }
+                res = await addProduct({
+                    item_name: editingItem.item_name,
+                    rate: Number(editingItem.rate),
+                    description: editingItem.description || '',
+                    product_type: editingItem.product_type,
+                    status: editingItem.status
+                });
+            } else {
+                res = await updateProduct(editingItem.item_id, {
+                    item_name: editingItem.item_name,
+                    rate: Number(editingItem.rate),
+                    description: editingItem.description || '',
+                    product_type: editingItem.product_type,
+                    status: editingItem.status
+                });
+            }
 
             if (res.success) {
-                setMessage({ type: 'success', text: 'Product updated successfully' });
+                setMessage({ type: 'success', text: editingItem.isNew ? 'Product created successfully' : 'Product updated successfully' });
                 setShowModal(false);
                 await loadProducts();
             } else {
-                setMessage({ type: 'error', text: res.error });
+                setMessage({ type: 'error', text: res.error || 'Failed to save product' });
             }
         } catch (err) {
-            setMessage({ type: 'error', text: 'Update failed. Please try again.' });
+            setMessage({ type: 'error', text: 'Network failure. Please try again.' });
         } finally {
             setFormLoading(false);
         }
@@ -159,6 +192,11 @@ export default function ProductsPage() {
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Products & Services</h2>
                         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Browse standard pricing and build quotes</p>
                     </div>
+                    {canEdit && (
+                        <button className="btn btn-primary" onClick={openCreate} style={{ gap: '6px' }}>
+                            <IconPlus size={16} /> Add Product
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-md)' }}>
@@ -198,46 +236,55 @@ export default function ProductsPage() {
                                             No products found matching your filter.
                                         </td>
                                     </tr>
-                                ) : filteredItems.map(item => (
-                                    <tr key={item.item_id}>
-                                        <td>
-                                            <div style={{ fontWeight: 500 }}>{item.item_name}</div>
-                                            {item.description && (
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {item.description}
+                                ) : filteredItems.map(item => {
+                                    const isActive = (item.status || 'Active') !== 'Inactive';
+                                    return (
+                                        <tr key={item.item_id} style={{ opacity: isActive ? 1 : 0.5 }}>
+                                            <td>
+                                                <div style={{ fontWeight: 500 }}>{item.item_name}</div>
+                                                {item.description && (
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {item.description}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <span className="badge" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                                                        {item.product_type}
+                                                    </span>
+                                                    {!isActive && (
+                                                        <span className="badge badge-pending" style={{ fontSize: '0.65rem' }}>Inactive</span>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </td>
-                                        <td>
-                                            <span className="badge" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
-                                                {item.product_type}
-                                            </span>
-                                        </td>
-                                        <td style={{ fontWeight: 600 }}>
-                                            {'\u20B5'} {Number(item.rate).toFixed(2)}
-                                        </td>
-                                        <td>
-                                            <button
-                                                className="btn"
-                                                style={{ fontSize: '0.75rem', padding: '4px 8px', backgroundColor: 'var(--brand-primary)', color: 'white' }}
-                                                onClick={() => addToQuote(item)}
-                                            >
-                                                + Add to Quote
-                                            </button>
-                                        </td>
-                                        {canEdit && (
+                                            </td>
+                                            <td style={{ fontWeight: 600 }}>
+                                                {'\u20B5'} {Number(item.rate).toFixed(2)}
+                                            </td>
                                             <td>
                                                 <button
-                                                    className="btn btn-secondary"
-                                                    style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-                                                    onClick={() => openEdit(item)}
+                                                    className="btn"
+                                                    style={{ fontSize: '0.75rem', padding: '4px 8px', backgroundColor: isActive ? 'var(--brand-primary)' : 'var(--color-bg-secondary)', color: isActive ? 'white' : 'var(--color-text-muted)', cursor: isActive ? 'pointer' : 'not-allowed' }}
+                                                    onClick={() => isActive && addToQuote(item)}
+                                                    disabled={!isActive}
                                                 >
-                                                    Edit
+                                                    + Add to Quote
                                                 </button>
                                             </td>
-                                        )}
-                                    </tr>
-                                ))}
+                                            {canEdit && (
+                                                <td>
+                                                    <button
+                                                        className="btn btn-secondary"
+                                                        style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                                                        onClick={() => openEdit(item)}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -310,10 +357,10 @@ export default function ProductsPage() {
 
             {/* Edit Modal (Admin only) */}
             {showModal && editingItem && canEdit && (
-                <div className="modal-overlay">
-                    <div className="modal modal-content">
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="modal modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
                         <div className="modal-header">
-                            <h2>Edit Product</h2>
+                            <h2>{editingItem.isNew ? 'New Product/Service' : 'Edit Item'}</h2>
                             <button className="btn-icon" onClick={() => setShowModal(false)}><IconX size={20} /></button>
                         </div>
                         <div className="modal-body">
@@ -323,17 +370,45 @@ export default function ProductsPage() {
                                 </div>
                             )}
                             <form onSubmit={handleEditSubmit}>
-                                <div className="form-group">
-                                    <label>Item Name</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={editingItem.item_name}
-                                        disabled
-                                        style={{ backgroundColor: 'var(--color-surface)', cursor: 'not-allowed' }}
-                                    />
-                                    <small className="form-hint">Item names are locked to match backend data configurations.</small>
-                                </div>
+                                {editingItem.isNew ? (
+                                    <>
+                                        <div className="form-group">
+                                            <label>Item Name</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                className="form-input"
+                                                value={editingItem.item_name}
+                                                onChange={(e) => setEditingItem({ ...editingItem, item_name: e.target.value })}
+                                                placeholder="e.g. A4 Flyers"
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Item Type</label>
+                                            <select
+                                                className="form-input"
+                                                value={editingItem.product_type}
+                                                onChange={(e) => setEditingItem({ ...editingItem, product_type: e.target.value })}
+                                            >
+                                                <option value="Goods">Product (Goods)</option>
+                                                <option value="Service">Service</option>
+                                            </select>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="form-group">
+                                        <label>Item Name</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={editingItem.item_name}
+                                            disabled
+                                            style={{ backgroundColor: 'var(--color-surface)', cursor: 'not-allowed' }}
+                                        />
+                                        <small className="form-hint">Item identity cannot be mutated after creation.</small>
+                                    </div>
+                                )}
+
                                 <div className="form-group">
                                     <label>Rate (GHS)</label>
                                     <input
@@ -353,10 +428,25 @@ export default function ProductsPage() {
                                         rows="3"
                                         value={editingItem.description}
                                         onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
+                                        placeholder="Optional details..."
                                     />
                                 </div>
 
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)', marginTop: 'var(--space-lg)' }}>
+                                {!editingItem.isNew && (
+                                    <div className="form-group">
+                                        <label>Status</label>
+                                        <select
+                                            className="form-input"
+                                            value={editingItem.status || 'Active'}
+                                            onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value })}
+                                        >
+                                            <option value="Active">Active</option>
+                                            <option value="Inactive">Inactive (Disabled)</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)', marginTop: 'var(--space-xl)' }}>
                                     <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                                     <button type="submit" className="btn btn-primary" disabled={formLoading}>
                                         {formLoading ? 'Saving...' : 'Save Changes'}
