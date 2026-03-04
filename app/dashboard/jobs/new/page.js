@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createJob, uploadFile, getProducts, getConfig } from '@/lib/api';
-import { IconArrowLeft, IconPlus, IconMinus, IconX, IconPlusCircle, IconTrash } from '@/lib/icons';
+import { IconArrowLeft, IconPlus, IconMinus, IconX, IconPlusCircle, IconTrash, IconUpload } from '@/lib/icons';
 
 export default function NewJobPage() {
     const router = useRouter();
@@ -42,7 +42,7 @@ export default function NewJobPage() {
     const [showCustomItemPicker, setShowCustomItemPicker] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [config, setConfig] = useState(null);
-    const [designServiceMeta, setDesignServiceMeta] = useState(null);
+    const [designServiceOptions, setDesignServiceOptions] = useState([]);
 
     // Load Initial Data
     useEffect(() => {
@@ -96,7 +96,8 @@ export default function NewJobPage() {
             const res = await getProducts('Active');
             if (res.success) {
                 const groups = {};
-                let foundDesignMeta = null;
+                const designOptionsList = [];
+
                 res.data.forEach(p => {
                     const t = p.product_type || 'Other';
                     if (!groups[t]) groups[t] = [];
@@ -109,14 +110,14 @@ export default function NewJobPage() {
                         description: p.description
                     };
 
-                    if (p.item_name && p.item_name.toLowerCase() === 'production design charge') {
-                        foundDesignMeta = itemData;
+                    if (p.item_name && p.item_name.toLowerCase().includes('design')) {
+                        designOptionsList.push(itemData);
                     }
 
                     groups[t].push(itemData);
                 });
                 setProductGroups(groups);
-                if (foundDesignMeta) setDesignServiceMeta(foundDesignMeta);
+                setDesignServiceOptions(designOptionsList);
             }
 
             setLoading(false);
@@ -133,26 +134,54 @@ export default function NewJobPage() {
         const itemCost = item.costType === 'percent' ? itemBase * (Number(item.cost || 0) / 100) : Number(item.cost || 0);
 
         // Item Level Design Cost calculation
-        const baseDesignRate = item.design_service ? (designServiceMeta ? designServiceMeta.rate : 0) : 0;
-        const designMod = item.design_service ? Number(item.design_cost || 0) : 0;
-        const computedDesignMod = (item.design_service && item.design_costType === 'percent') ? baseDesignRate * (designMod / 100) : designMod;
-        const designCost = item.design_service ? (baseDesignRate + computedDesignMod) : 0;
+        let baseDesignRate = 0;
+        let designName = 'Design Service';
+        if (item.design_service && item.design_id) {
+            const foundOption = designServiceOptions.find(opt => opt.id === item.design_id);
+            if (foundOption) {
+                baseDesignRate = foundOption.rate;
+                designName = foundOption.name;
+            }
+        }
 
-        const baseWithCost = itemBase + itemCost + designCost;
-        const itemDiscount = item.discountType === 'percent' ? baseWithCost * (Number(item.discount || 0) / 100) : Number(item.discount || 0);
-        const itemTotal = Math.max(0, baseWithCost - itemDiscount);
-        return { ...item, itemBase, itemCost, designCost, itemDiscount, itemTotal };
+        const designAddLog = item.design_service ? Number(item.design_cost || 0) : 0;
+        const computedDesignAdd = (item.design_service && item.design_costType === 'percent') ? baseDesignRate * (designAddLog / 100) : designAddLog;
+
+        const designDiscLog = item.design_service ? Number(item.design_discount || 0) : 0;
+        const computedDesignDisc = (item.design_service && item.design_discountType === 'percent') ? baseDesignRate * (designDiscLog / 100) : designDiscLog;
+
+        const designCost = item.design_service ? Math.max(0, (baseDesignRate + computedDesignAdd) - computedDesignDisc) : 0;
+
+        const productBaseWithCost = itemBase + itemCost;
+        const itemDiscount = item.discountType === 'percent' ? productBaseWithCost * (Number(item.discount || 0) / 100) : Number(item.discount || 0);
+        const productTotal = Math.max(0, productBaseWithCost - itemDiscount);
+
+        const itemTotal = productTotal + designCost;
+        return { ...item, itemBase, itemCost, designCost, designDiscMod: computedDesignDisc, designAddMod: computedDesignAdd, baseDesignRate, designName, itemDiscount, productTotal, itemTotal };
     });
 
     const subtotalProducts = lineItemsWithTotals.reduce((sum, item) => sum + item.itemTotal, 0);
 
-    const standaloneDesignBase = form.requires_design ? (designServiceMeta ? designServiceMeta.rate : 0) : 0;
+    let standaloneDesignBaseRate = 0;
+    if (form.requires_design && form.standalone_design_id) {
+        const foundOption = designServiceOptions.find(opt => opt.id === form.standalone_design_id);
+        if (foundOption) standaloneDesignBaseRate = foundOption.rate;
+    }
+    const standaloneDesignBase = form.requires_design ? standaloneDesignBaseRate : 0;
+
+    const standaloneDesignAdd = form.requires_design ? (
+        form.standalone_design_cost_type === 'percent'
+            ? standaloneDesignBase * (Number(form.standalone_design_cost || 0) / 100)
+            : Number(form.standalone_design_cost || 0)
+    ) : 0;
+
     const standaloneDesignDiscount = form.requires_design ? (
         form.standalone_design_discount_type === 'percent'
             ? standaloneDesignBase * (Number(form.standalone_design_discount || 0) / 100)
             : Number(form.standalone_design_discount || 0)
     ) : 0;
-    const standaloneDesignTotal = Math.max(0, standaloneDesignBase + standaloneDesignDiscount); // Adding since it's a modifier (can be pos/neg)
+
+    const standaloneDesignTotal = Math.max(0, (standaloneDesignBase + standaloneDesignAdd) - standaloneDesignDiscount);
 
     const subtotal = subtotalProducts + standaloneDesignTotal;
 
@@ -174,6 +203,8 @@ export default function NewJobPage() {
                 localStorage.setItem('printflow_draft_job', JSON.stringify({
                     form,
                     lineItems,
+                    computedItems: lineItemsWithTotals,
+                    standaloneDesign: { active: form.requires_design, total: standaloneDesignTotal },
                     globalDiscount,
                     globalDiscountType,
                     globalCost,
@@ -198,8 +229,11 @@ export default function NewJobPage() {
             discount: discount,
             discountType: discountType,
             design_service: false,
+            design_id: designServiceOptions.length > 0 ? designServiceOptions[0].id : null,
             design_cost: 0,
             design_costType: 'cedi',
+            design_discount: 0,
+            design_discountType: 'cedi',
             design_notes: '',
             unit: 'unit'
         };
@@ -226,8 +260,11 @@ export default function NewJobPage() {
                 cost: 0,
                 costType: 'cedi',
                 design_service: false,
+                design_id: designServiceOptions.length > 0 ? designServiceOptions[0].id : null,
                 design_cost: 0,
                 design_costType: 'cedi',
+                design_discount: 0,
+                design_discountType: 'cedi',
                 design_notes: '',
                 unit: product.unit || 'pcs'
             }]);
@@ -246,11 +283,15 @@ export default function NewJobPage() {
             updated[index].cost = Math.max(0, parseFloat(value) || 0);
         } else if (field === 'design_cost') {
             updated[index].design_cost = Math.max(0, parseFloat(value) || 0);
+        } else if (field === 'design_discount') {
+            updated[index].design_discount = Math.max(0, parseFloat(value) || 0);
         } else if (field === 'design_service') {
             updated[index].design_service = value;
+        } else if (field === 'design_id') {
+            updated[index].design_id = value;
         } else if (field === 'design_notes') {
             updated[index].design_notes = value;
-        } else if (field === 'discountType' || field === 'costType' || field === 'design_costType') {
+        } else if (field === 'discountType' || field === 'costType' || field === 'design_costType' || field === 'design_discountType') {
             updated[index][field] = value;
         }
         setLineItems(updated);
@@ -290,8 +331,16 @@ export default function NewJobPage() {
             if (li.itemCost > 0) detailedDescription += ` (Cost: +\u20B5${li.itemCost.toFixed(2)})`;
             if (li.designCost > 0) detailedDescription += ` (Design: +\u20B5${li.designCost.toFixed(2)})`;
             if (li.itemDiscount > 0) detailedDescription += ` (Discount: -\u20B5${li.itemDiscount.toFixed(2)})`;
-            detailedDescription += ` = \u20B5${li.itemTotal.toFixed(2)}\n`;
-            if (li.design_service && li.design_notes) detailedDescription += `   -> Design Notes: ${li.design_notes}\n`;
+            if (li.itemDiscount > 0) detailedDescription += ` (Discount: -\u20B5${li.itemDiscount.toFixed(2)})`;
+            detailedDescription += ` = \u20B5${li.productTotal.toFixed(2)}\n`;
+            if (li.design_service) {
+                detailedDescription += `   -> Configured: ${li.designName}\n`;
+                detailedDescription += `      | Base Rate: \u20B5${li.baseDesignRate.toFixed(2)}`;
+                if (li.designAddMod > 0) detailedDescription += ` | Add'l Cost: +\u20B5${li.designAddMod.toFixed(2)}`;
+                if (li.designDiscMod > 0) detailedDescription += ` | Disc: -\u20B5${li.designDiscMod.toFixed(2)}`;
+                detailedDescription += ` | Subtotal: \u20B5${li.designCost.toFixed(2)}\n`;
+                if (li.design_notes) detailedDescription += `   -> Design Notes: ${li.design_notes}\n`;
+            }
         });
 
         detailedDescription += `\nRaw Subtotal: \u20B5${subtotal.toFixed(2)}`;
@@ -308,17 +357,18 @@ export default function NewJobPage() {
             detailedDescription += `\nAfter Global Adjustments: \u20B5${afterGlobalDiscount.toFixed(2)}`;
         }
 
-        if (estTaxRate > 0) {
-            detailedDescription += `\nEst. Tax (${estTaxRate}%): \u20B5${taxAmount.toFixed(2)}`;
-        }
-
         if (form.requires_design) {
-            detailedDescription += `\n--- STANDALONE DESIGN SERVICE ---\n`;
+            const optedDesign = designServiceOptions.find(opt => opt.id === form.standalone_design_id);
+            const designName = optedDesign ? optedDesign.name : 'Standalone Design Service';
+            detailedDescription += `\n--- ${designName.toUpperCase()} ---\n`;
             detailedDescription += `   -> Base Cost: \u20B5${standaloneDesignBase.toFixed(2)}\n`;
-            if (Number(form.standalone_design_discount || 0) !== 0) {
+            if (Number(form.standalone_design_cost || 0) > 0) {
+                const cType = form.standalone_design_cost_type === 'percent' ? '%' : '\u20B5';
+                detailedDescription += `   -> Add'l Cost: +${form.standalone_design_cost}${cType}\n`;
+            }
+            if (Number(form.standalone_design_discount || 0) > 0) {
                 const dType = form.standalone_design_discount_type === 'percent' ? '%' : '\u20B5';
-                const sign = Number(form.standalone_design_discount) > 0 ? '+' : '';
-                detailedDescription += `   -> Modifier: ${sign}${form.standalone_design_discount}${dType}\n`;
+                detailedDescription += `   -> Discount: -${form.standalone_design_discount}${dType}\n`;
             }
             if (form.standalone_design_details) {
                 detailedDescription += `   -> Scope: ${form.standalone_design_details}\n`;
@@ -343,10 +393,11 @@ export default function NewJobPage() {
 
         // Splice Standalone Design locally before shipping to API
         const submitLineItems = [...lineItems];
-        if (form.requires_design && designServiceMeta) {
+        if (form.requires_design && form.standalone_design_id) {
+            const optedDesign = designServiceOptions.find(opt => opt.id === form.standalone_design_id);
             submitLineItems.push({
-                productId: designServiceMeta.id,
-                name: designServiceMeta.name,
+                productId: form.standalone_design_id,
+                name: optedDesign ? optedDesign.name : 'Standalone Design',
                 rate: standaloneDesignTotal, // Push pre-computed total
                 quantity: 1,
                 discount: 0,
@@ -355,7 +406,7 @@ export default function NewJobPage() {
                 costType: 'cedi',
                 design_service: false,
                 design_notes: form.standalone_design_details,
-                unit: designServiceMeta.unit
+                unit: optedDesign ? optedDesign.unit : 'unit'
             });
         }
 
@@ -571,33 +622,17 @@ export default function NewJobPage() {
                                                         <option value="percent">%</option>
                                                     </select>
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minHeight: '26px' }}>
-                                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '4px', background: item.design_service ? 'var(--color-accent)' : 'var(--color-bg-input)', padding: '2px 8px', borderRadius: 'var(--radius-full)', border: `1px solid ${item.design_service ? 'var(--color-accent)' : 'var(--color-border)'}`, transition: 'all 0.2s', boxShadow: item.design_service ? '0 2px 4px rgba(99, 102, 241, 0.2)' : 'none' }}>
-                                                        <input type="checkbox" checked={item.design_service} onChange={e => {
-                                                            const isChecked = e.target.checked;
-                                                            updateItemField(i, 'design_service', isChecked);
-                                                            if (!isChecked) updateItemField(i, 'design_notes', '');
-                                                        }} style={{ display: 'none' }} />
-                                                        <span style={{ fontSize: '0.75rem', fontWeight: item.design_service ? 700 : 500, color: item.design_service ? '#fff' : 'var(--color-text-muted)', whiteSpace: 'nowrap', transition: 'color 0.2s' }}>+Design</span>
-                                                    </label>
-                                                    {item.design_service && (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
-                                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Cost Mod</span>
-                                                            <input type="number" value={item.design_cost || 0} step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
-                                                                style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }}
-                                                                placeholder="Amt" />
-                                                            <select value={item.design_costType || 'cedi'} onChange={e => updateItemField(i, 'design_costType', e.target.value)}
-                                                                style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px', borderRadius: '4px', cursor: 'pointer' }}>
-                                                                <option value="cedi">{'\u20B5'}</option>
-                                                                <option value="percent">%</option>
-                                                            </select>
-                                                        </div>
-                                                    )}
-                                                </div>
                                             </div>
 
-                                            <div style={{ fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'right' }}>
-                                                {'\u20B5'}{(lineItemsWithTotals[i]?.itemTotal || 0).toFixed(2)}
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '90px', gap: '4px' }}>
+                                                <div style={{ fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                                    {'\u20B5'}{(lineItemsWithTotals[i]?.productTotal || lineItemsWithTotals[i]?.itemTotal || 0).toFixed(2)}
+                                                </div>
+                                                {item.design_service && (
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                        + {'\u20B5'}{(lineItemsWithTotals[i]?.designCost || 0).toFixed(2)}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <button type="button" onClick={() => removeItem(i)}
@@ -606,19 +641,59 @@ export default function NewJobPage() {
                                             </button>
                                         </div>
 
-                                        {/* POPUP / BUBBLE FOR DESIGN NOTES */}
+                                        <div style={{ marginTop: 'var(--space-md)', paddingTop: 'var(--space-md)', borderTop: '1px dashed var(--color-border)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', alignItems: 'center' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '6px', background: item.design_service ? 'var(--color-text-primary)' : 'var(--color-bg-input)', padding: '4px 10px', borderRadius: 'var(--radius-full)', border: `1px solid ${item.design_service ? 'var(--color-text-primary)' : 'var(--color-border)'}`, transition: 'all 0.2s', boxShadow: item.design_service ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none' }}>
+                                                <input type="checkbox" checked={item.design_service} onChange={e => {
+                                                    const isChecked = e.target.checked;
+                                                    updateItemField(i, 'design_service', isChecked);
+                                                    if (!isChecked) updateItemField(i, 'design_notes', '');
+                                                }} style={{ display: 'none' }} />
+                                                <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: item.design_service ? 'var(--color-bg-primary)' : 'var(--color-text-muted)', whiteSpace: 'nowrap', transition: 'color 0.2s' }}>{item.design_service ? '\u2713 Design Applied' : '+Design'}</span>
+                                            </label>
+
+                                            {item.design_service && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Tier</span>
+                                                        <select value={item.design_id || ''} onChange={e => updateItemField(i, 'design_id', e.target.value)}
+                                                            style={{ minWidth: '120px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', fontSize: '0.75rem' }}>
+                                                            {designServiceOptions.map(opt => (
+                                                                <option key={opt.id} value={opt.id}>{opt.name} (\u20B5{opt.rate})</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>+Cost</span>
+                                                        <input type="number" value={item.design_cost || 0} step="0.01" onChange={e => updateItemField(i, 'design_cost', e.target.value)}
+                                                            style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }}
+                                                            placeholder="Amt" />
+                                                        <select value={item.design_costType || 'cedi'} onChange={e => updateItemField(i, 'design_costType', e.target.value)}
+                                                            style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px', borderRadius: '4px', cursor: 'pointer' }}>
+                                                            <option value="cedi">{'\u20B5'}</option>
+                                                            <option value="percent">%</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>-Disc</span>
+                                                        <input type="number" value={item.design_discount || 0} step="0.01" onChange={e => updateItemField(i, 'design_discount', e.target.value)}
+                                                            style={{ width: '60px', padding: '4px 8px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)' }}
+                                                            placeholder="Amt" />
+                                                        <select value={item.design_discountType || 'cedi'} onChange={e => updateItemField(i, 'design_discountType', e.target.value)}
+                                                            style={{ background: 'var(--color-bg-secondary)', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.75rem', padding: '2px', borderRadius: '4px', cursor: 'pointer' }}>
+                                                            <option value="cedi">{'\u20B5'}</option>
+                                                            <option value="percent">%</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {item.design_service && (
-                                            <div style={{ position: 'relative', marginTop: '2px', marginBottom: '8px', padding: '12px', background: 'var(--color-completed-light)', border: '1px solid var(--color-completed)', borderRadius: 'var(--radius-md)', margin: '0 40px 0 16px' }}>
-                                                <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'var(--color-bg-primary)', borderTop: '1px solid var(--color-border)', borderLeft: '1px solid var(--color-border)', transform: 'rotate(45deg)' }}></div>
-                                                <div style={{ position: 'absolute', top: '-6px', left: '16px', width: '10px', height: '10px', background: 'var(--color-completed-light)', borderTop: '1px solid transparent', borderLeft: '1px solid transparent', transform: 'rotate(45deg)' }}></div>
-                                                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-completed)', margin: '0 0 8px 0' }}>Design Description:</p>
-                                                <textarea
-                                                    style={{ width: '100%', fontSize: '0.8125rem', padding: '8px', background: 'var(--color-bg-input)', border: '1px dashed var(--color-completed)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', outline: 'none' }}
-                                                    rows={2}
-                                                    placeholder={`Provide detailed design instructions for ${item.name}...`}
-                                                    value={item.design_notes || ''}
-                                                    onChange={e => updateItemField(i, 'design_notes', e.target.value)}
-                                                />
+                                            <div style={{ marginTop: '12px', padding: '12px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-input)' }}>
+                                                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '8px' }}>Design Instructions</label>
+                                                <textarea style={{ width: '100%', fontSize: '0.8125rem', padding: '10px 12px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', outline: 'none', resize: 'vertical' }} rows={2} placeholder={`Provide detailed design instructions for ${item.name}...`} value={item.design_notes || ''} onChange={e => updateItemField(i, 'design_notes', e.target.value)} />
                                             </div>
                                         )}
                                     </div>
@@ -648,18 +723,39 @@ export default function NewJobPage() {
                         {form.requires_design && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
                                 <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
-                                    <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Base Design Cost</label>
-                                        <div style={{ padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontWeight: 600, display: 'flex', alignItems: 'center', height: '42px' }}>
-                                            {'\u20B5'}{standaloneDesignBase.toFixed(2)}
+                                    <div className="form-group" style={{ marginBottom: 0, flex: 2 }}>
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Design Tier</label>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <select className="form-input" style={{ flex: 1 }} value={form.standalone_design_id || ''}
+                                                onChange={e => setForm(f => ({ ...f, standalone_design_id: e.target.value }))}>
+                                                {designServiceOptions.map(opt => (
+                                                    <option key={opt.id} value={opt.id}>{opt.name}</option>
+                                                ))}
+                                            </select>
+                                            <div style={{ padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontWeight: 600, display: 'flex', alignItems: 'center', height: '42px', whiteSpace: 'nowrap' }}>
+                                                {'\u20B5'}{standaloneDesignBase.toFixed(2)}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Design Modifier</label>
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Add'l Cost</label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input type="number" step="0.01" className="form-input"
+                                                value={form.standalone_design_cost || ''} onChange={e => setForm(f => ({ ...f, standalone_design_cost: e.target.value }))}
+                                                placeholder="Amount" style={{ flex: 2 }} />
+                                            <select className="form-input" value={form.standalone_design_cost_type || 'cedi'}
+                                                onChange={e => setForm(f => ({ ...f, standalone_design_cost_type: e.target.value }))} style={{ flex: 1 }}>
+                                                <option value="cedi">{'\u20B5'}</option>
+                                                <option value="percent">%</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Discount</label>
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <input type="number" step="0.01" className="form-input"
                                                 value={form.standalone_design_discount || ''} onChange={e => setForm(f => ({ ...f, standalone_design_discount: e.target.value }))}
-                                                placeholder="(+) Extra or (-) Disc" style={{ flex: 2 }} />
+                                                placeholder="Amount" style={{ flex: 2 }} />
                                             <select className="form-input" value={form.standalone_design_discount_type || 'cedi'}
                                                 onChange={e => setForm(f => ({ ...f, standalone_design_discount_type: e.target.value }))} style={{ flex: 1 }}>
                                                 <option value="cedi">{'\u20B5'}</option>
@@ -673,6 +769,81 @@ export default function NewJobPage() {
                                     <textarea className="form-input" rows={3} required={form.requires_design}
                                         value={form.standalone_design_details || ''} onChange={e => setForm(f => ({ ...f, standalone_design_details: e.target.value }))}
                                         placeholder="Detailed instructions for the design team..." />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* CLIENT FILES */}
+                    <div style={{
+                        marginBottom: 'var(--space-xl)', padding: 'var(--space-xl)',
+                        background: form.provides_files ? '#f0fdf4' : 'var(--color-bg-secondary)',
+                        border: form.provides_files ? '2px solid #22c55e' : '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-lg)', transition: 'all var(--transition-normal)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <h3 className="card-title" style={{ margin: 0, color: form.provides_files ? '#166534' : 'var(--color-text-primary)' }}>Client Files</h3>
+                                <p style={{ fontSize: '0.875rem', color: form.provides_files ? '#15803d' : 'var(--color-text-muted)', margin: 0 }}>Is the client providing assets or files?</p>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={form.provides_files}
+                                    onChange={e => setForm(f => ({ ...f, provides_files: e.target.checked }))}
+                                    style={{ width: '24px', height: '24px', marginRight: '12px', cursor: 'pointer', accentColor: '#22c55e' }}
+                                />
+                                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: form.provides_files ? '#166534' : 'var(--color-text-primary)' }}>Yes, Have Files</span>
+                            </label>
+                        </div>
+
+                        {form.provides_files && (
+                            <div style={{ marginTop: 'var(--space-lg)', borderTop: `1px solid ${form.provides_files ? '#bbf7d0' : 'var(--color-border)'}`, paddingTop: 'var(--space-lg)' }}>
+                                <h4 style={{ fontSize: '1rem', marginBottom: '16px', fontWeight: 600, color: '#166534' }}>Upload Assets</h4>
+
+                                {/* Custom Multi-file uploader UI */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                                        <label className="btn btn-primary" style={{ cursor: 'pointer', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '1rem', background: '#22c55e', color: 'white', border: 'none' }}>
+                                            <IconUpload size={20} />
+                                            Select Files
+                                            <input
+                                                type="file"
+                                                multiple
+                                                onChange={handleFileChange}
+                                                style={{ display: 'none' }}
+                                            />
+                                        </label>
+                                        <span style={{ fontSize: '0.875rem', color: '#15803d' }}>
+                                            {files.length === 0 ? 'No files selected' : `${files.length} file(s) selected`}
+                                        </span>
+                                    </div>
+
+                                    {files.length > 0 && (
+                                        <div style={{
+                                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px',
+                                            background: '#dcfce7', padding: '16px', borderRadius: '8px'
+                                        }}>
+                                            {files.map((file, i) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                                                    <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }} title={file.name}>
+                                                        {file.name}
+                                                    </span>
+                                                    <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', padding: '4px' }}>
+                                                        <IconX size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="form-group" style={{ marginTop: 'var(--space-lg)', marginBottom: 0 }}>
+                                    <label className="form-label" style={{ color: '#166534' }}>File URL / Drive Link (Optional)</label>
+                                    <input type="url" className="form-input"
+                                        value={form.file_url} onChange={e => setForm(f => ({ ...f, file_url: e.target.value }))}
+                                        placeholder="https://drive.google.com/..."
+                                        style={{ border: '1px solid #86efac', '&:focus': { borderColor: '#22c55e', boxShadow: '0 0 0 3px rgba(34, 197, 94, 0.1)' } }} />
                                 </div>
                             </div>
                         )}
@@ -722,70 +893,6 @@ export default function NewJobPage() {
                     </div>
 
 
-
-                    {/* CLIENT FILES */}
-                    <div style={{
-                        marginBottom: 'var(--space-xl)', padding: 'var(--space-xl)',
-                        background: form.provides_files ? '#f0fdf4' : 'var(--color-bg-secondary)',
-                        border: form.provides_files ? '2px solid #22c55e' : '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-lg)', transition: 'all var(--transition-normal)'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div>
-                                <h3 className="card-title" style={{ margin: 0, color: form.provides_files ? '#166534' : 'var(--color-text-primary)' }}>Client Files</h3>
-                                <p style={{ fontSize: '0.875rem', color: form.provides_files ? '#15803d' : 'var(--color-text-muted)', margin: 0 }}>Is the client providing assets or files?</p>
-                            </div>
-                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={form.provides_files}
-                                    onChange={e => setForm(f => ({ ...f, provides_files: e.target.checked }))}
-                                    style={{ width: '24px', height: '24px', marginRight: '12px', cursor: 'pointer', accentColor: '#22c55e' }}
-                                />
-                                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: form.provides_files ? '#166534' : 'var(--color-text-primary)' }}>Yes, Have Files</span>
-                            </label>
-                        </div>
-
-                        {form.provides_files && (
-                            <div style={{ marginTop: 'var(--space-lg)', borderTop: `1px solid ${form.provides_files ? '#bbf7d0' : 'var(--color-border)'}`, paddingTop: 'var(--space-lg)' }}>
-                                <h4 style={{ fontSize: '1rem', marginBottom: '16px', fontWeight: 600, color: '#166534' }}>Upload Assets</h4>
-
-                                {/* Custom Multi-file uploader UI */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                                        <label className="btn btn-primary" style={{ cursor: 'pointer', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '1rem', background: '#22c55e', color: 'white', border: 'none' }}>
-                                            <IconPlus size={20} /> Select Files
-                                            <input
-                                                type="file"
-                                                multiple
-                                                onChange={e => e.target.files && setFiles(prev => [...prev, ...Array.from(e.target.files)])}
-                                                style={{ display: 'none' }}
-                                            />
-                                        </label>
-                                        <span style={{ fontSize: '0.9rem', color: '#15803d' }}>
-                                            Supports multiple files (images, PDFs, documents)
-                                        </span>
-                                    </div>
-
-                                    {files.length > 0 && (
-                                        <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {files.map((file, i) => (
-                                                <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid #bbf7d0', boxShadow: 'var(--shadow-sm)' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                        <span style={{ fontSize: '1rem', fontWeight: 600, color: '#166534' }}>{file.name}</span>
-                                                        <span style={{ fontSize: '0.8125rem', color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>{(file.size / 1024).toFixed(1)} KB</span>
-                                                    </div>
-                                                    <button type="button" onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '50%' }} title="Remove file" className="hover-bg-error">
-                                                        <IconX size={18} />
-                                                    </button>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
 
                     {/* NOTES */}
                     <div className="form-group">

@@ -13,6 +13,8 @@ export default function ProductsPage() {
     const [showModal, setShowModal] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [filterType, setFilterType] = useState('All');
+    const [editingItem, setEditingItem] = useState(null);
+    const [formLoading, setFormLoading] = useState(false);
 
     // Quote Cart State
     const [quoteItems, setQuoteItems] = useState([]);

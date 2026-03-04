@@ -424,8 +424,30 @@ export default function DashboardLayout({ children }) {
                     border: '1px solid var(--brand-primary)', zIndex: 90, display: 'flex', flexDirection: 'column', gap: '4px',
                     animation: 'slideUp 0.3s ease-out'
                 }}>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Draft Job Totals</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px', alignItems: 'flex-end', marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>Draft Job Totals</div>
+
+                    {draftQuote.computedItems && draftQuote.computedItems.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
+                            {draftQuote.computedItems.map((cItem, i) => (
+                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', fontSize: '0.8125rem', color: 'var(--color-text-primary)' }}>
+                                    <span style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <span>{cItem.quantity}x</span>
+                                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>{cItem.name}</span>
+                                        {cItem.designCost > 0 && <span style={{ color: 'var(--brand-primary)', fontSize: '0.7rem', fontWeight: 600 }}> (+Design)</span>}
+                                    </span>
+                                    <span>{'\u20B5'}{cItem.itemTotal.toFixed(2)}</span>
+                                </div>
+                            ))}
+                            {draftQuote.standaloneDesign?.active && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', fontSize: '0.8125rem', color: 'var(--color-text-primary)' }}>
+                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>Standalone Design Svc</span>
+                                    <span>{'\u20B5'}{(draftQuote.standaloneDesign.total || 0).toFixed(2)}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px', alignItems: 'flex-end' }}>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Subtotal</span>
                             <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{'\u20B5'}{(draftQuote.subtotal || 0).toFixed(2)}</span>
