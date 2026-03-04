@@ -981,6 +981,14 @@ export default function NewJobPage() {
                                         </span>
                                     </div>
                                 )}
+                                {form.requires_delivery && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)', marginTop: '8px' }}>
+                                        <span style={{ color: 'var(--color-text-muted)' }}>Delivery Fee:</span>
+                                        <span style={{ fontWeight: 600, fontSize: '1rem', width: '100px', textAlign: 'right' }}>
+                                            {'\u20B5'}{deliveryDelta.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
                                 <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '8px', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-lg)' }}>
                                     <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>Final Total:</span>
                                     <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--brand-primary)', width: '120px', textAlign: 'right' }}>{'\u20B5'}{finalTotal.toFixed(2)}</span>
