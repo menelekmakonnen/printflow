@@ -218,6 +218,14 @@ export default function NewJobPage() {
             }
         }
     }, [form, lineItems, globalDiscount, globalDiscountType, globalCost, globalCostType, estTaxRate, loading, subtotal, finalTotal]);
+
+    function handleFileChange(e) {
+        if (e.target.files) {
+            // Keep existing files, append new files
+            setFiles(prev => [...prev, ...Array.from(e.target.files)]);
+        }
+    }
+
     function addCustomItem(name, rate, qty = 1, discount = 0, discountType = 'cedi') {
         const newItem = {
             productId: 'CUSTOM-' + Math.random().toString(36).substr(2, 9),
