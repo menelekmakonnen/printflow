@@ -337,10 +337,11 @@ export default function NewJobPage() {
         lineItemsWithTotals.forEach(li => {
             detailedDescription += `${li.quantity}x ${li.name} @ \u20B5${li.rate.toFixed(2)}`;
             if (li.itemCost > 0) detailedDescription += ` (Cost: +\u20B5${li.itemCost.toFixed(2)})`;
-            if (li.designCost > 0) detailedDescription += ` (Design: +\u20B5${li.designCost.toFixed(2)})`;
-            if (li.itemDiscount > 0) detailedDescription += ` (Discount: -\u20B5${li.itemDiscount.toFixed(2)})`;
             if (li.itemDiscount > 0) detailedDescription += ` (Discount: -\u20B5${li.itemDiscount.toFixed(2)})`;
             detailedDescription += ` = \u20B5${li.productTotal.toFixed(2)}\n`;
+            if (li.designCost > 0) {
+                detailedDescription += `   \u21B3 +Design: ${li.designName || 'Custom'} = \u20B5${li.designCost.toFixed(2)}\n`;
+            }
             if (li.design_service) {
                 detailedDescription += `   -> Configured: ${li.designName}\n`;
                 detailedDescription += `      | Base Rate: \u20B5${li.baseDesignRate.toFixed(2)}`;
@@ -922,9 +923,17 @@ export default function NewJobPage() {
                                 <div style={{ paddingBottom: '12px', borderBottom: '1px solid var(--color-border)', marginBottom: '8px' }}>
                                     <h4 style={{ margin: '0 0 12px 0', fontSize: '0.875rem', color: 'var(--color-text-primary)' }}>Quote Breakdown</h4>
                                     {lineItemsWithTotals.map((li, idx) => (
-                                        <div key={`summary-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginBottom: '6px', color: 'var(--color-text-muted)' }}>
-                                            <span style={{ display: 'flex', gap: '8px' }}><span>{li.quantity}x</span> <span>{li.name} {li.designCost > 0 ? <span style={{ color: 'var(--brand-primary)', fontSize: '0.7rem' }}>(+Design)</span> : ''}</span></span>
-                                            <span>{'\u20B5'}{li.itemTotal.toFixed(2)}</span>
+                                        <div key={`summary-${idx}`}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginBottom: '4px', color: 'var(--color-text-primary)' }}>
+                                                <span style={{ display: 'flex', gap: '8px' }}><span>{li.quantity}x</span> <span>{li.name}</span></span>
+                                                <span>{'\u20B5'}{li.productTotal.toFixed(2)}</span>
+                                            </div>
+                                            {li.designCost > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px', color: 'var(--brand-primary)', paddingLeft: '24px' }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>&#x21B3; +Design: {li.designName || 'Custom'}</span>
+                                                    <span>{'\u20B5'}{li.designCost.toFixed(2)}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                     {form.requires_design && (

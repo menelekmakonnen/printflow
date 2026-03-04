@@ -59,6 +59,7 @@ function buildNavSections(roles) {
         addItem('Management', { href: '/dashboard/accounting', icon: IconCedis, label: 'Accounting' });
         addItem('Management', { href: '/dashboard/expenses', icon: IconClipboard, label: 'Expenses Tracking' });
         addItem('Management', { href: '/dashboard/users', icon: IconUsers, label: 'User Management' });
+        addItem('Management', { href: '/dashboard/roles', icon: IconShieldAlert, label: 'Roles Matrix' });
         addItem('Management', { href: '/dashboard/notifications', icon: IconBell, label: 'Notification Log' });
     }
 
@@ -105,6 +106,7 @@ export default function DashboardLayout({ children }) {
     const [profileSaving, setProfileSaving] = useState(false);
     const [newAvatarBase64, setNewAvatarBase64] = useState('');
     const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
+    const [hideFloaterPref, setHideFloaterPref] = useState(false);
 
     // Crop State
     const [cropImageSrc, setCropImageSrc] = useState(null);
@@ -125,7 +127,14 @@ export default function DashboardLayout({ children }) {
             if (raw) {
                 try {
                     const parsed = JSON.parse(raw);
-                    if (pathname === '/dashboard/jobs/new') {
+                    const u = getUser();
+
+                    if (u && u.hide_floater === true) {
+                        setHideFloater(true);
+                    } else if (sessionStorage.getItem('printflow_hide_floater_session') === 'true' && pathname !== '/dashboard/jobs/new') {
+                        setHideFloater(true);
+                    } else if (pathname === '/dashboard/jobs/new') {
+                        sessionStorage.removeItem('printflow_hide_floater_session');
                         const totalsEl = document.getElementById('order-totals-section');
                         if (totalsEl) {
                             const rect = totalsEl.getBoundingClientRect();
@@ -173,6 +182,7 @@ export default function DashboardLayout({ children }) {
             return;
         }
         setUserState(getUser());
+        setHideFloaterPref(getUser()?.hide_floater === true);
         setIsClient(true);
 
         async function fetchLogo() {
@@ -255,13 +265,21 @@ export default function DashboardLayout({ children }) {
         setProfileSaving(true);
         setProfileMessage({ type: '', text: '' });
 
-        const res = await updateProfile(newAvatarBase64);
+        const payload = { hide_floater: hideFloaterPref };
+        if (newAvatarBase64) payload.avatar_base64 = newAvatarBase64;
+
+        const res = await updateProfile(payload);
         if (res.success) {
             setProfileMessage({ type: 'success', text: 'Profile updated!' });
-            const updatedUser = { ...user, avatar_base64: newAvatarBase64 };
+            const updatedUser = { ...user, hide_floater: hideFloaterPref };
+            if (newAvatarBase64) updatedUser.avatar_base64 = newAvatarBase64;
+
             setUserState(updatedUser);
             // Must update local storage too!
             localStorage.setItem('printflow_user', JSON.stringify(updatedUser));
+
+            // Force evaluate floater immediately
+            setHideFloater(hideFloaterPref);
 
             setTimeout(() => {
                 setShowProfileModal(false);
@@ -424,7 +442,12 @@ export default function DashboardLayout({ children }) {
                     border: '1px solid var(--brand-primary)', zIndex: 90, display: 'flex', flexDirection: 'column', gap: '4px',
                     animation: 'slideUp 0.3s ease-out'
                 }}>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>Draft Job Totals</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Draft Job Totals</span>
+                        <button onClick={() => { sessionStorage.setItem('printflow_hide_floater_session', 'true'); setHideFloater(true); }} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', display: 'flex', padding: '2px' }} title="Hide temporarily">
+                            <IconX size={16} />
+                        </button>
+                    </div>
 
                     {draftQuote.computedItems && draftQuote.computedItems.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
@@ -494,10 +517,27 @@ export default function DashboardLayout({ children }) {
                                     Max size: 500KB. Square images recommended.
                                 </p>
                             </div>
+
+                            <div style={{ width: '100%', borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={hideFloaterPref}
+                                        onChange={(e) => setHideFloaterPref(e.target.checked)}
+                                        style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: 'var(--brand-primary)' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Disable Floating Quote Summary</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.4, marginTop: '2px' }}>
+                                            Permanently hides the "Draft Job Totals" box hovering on the bottom right of the screen across your entire session.
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
                         <div className="modal-footer">
                             <button className="btn btn-ghost" onClick={() => setShowProfileModal(false)} disabled={profileSaving}>Cancel</button>
-                            <button className="btn btn-primary" onClick={handleSaveProfile} disabled={profileSaving || !newAvatarBase64}>
+                            <button className="btn btn-primary" onClick={handleSaveProfile} disabled={profileSaving}>
                                 {profileSaving ? 'Saving...' : 'Save Profile'}
                             </button>
                         </div>

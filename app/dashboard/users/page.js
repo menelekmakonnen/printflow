@@ -58,7 +58,7 @@ export default function UsersPage() {
 
     function openCreate() {
         setEditingUser(null);
-        setForm({ username: '', password: '', display_name: '', roles: [] });
+        setForm({ username: '', password: '', display_name: '', roles: [], hide_floater: false });
         setShowModal(true);
     }
 
@@ -68,7 +68,8 @@ export default function UsersPage() {
             username: user.username,
             password: '',
             display_name: user.display_name,
-            roles: parseRoles(user.roles)
+            roles: parseRoles(user.roles),
+            hide_floater: user.hide_floater === true
         });
         setShowModal(true);
     }
@@ -99,7 +100,8 @@ export default function UsersPage() {
                 const payload = {
                     target_username: editingUser.username,
                     display_name: form.display_name,
-                    roles: form.roles.join(',')
+                    roles: form.roles.join(','),
+                    hide_floater: form.hide_floater
                 };
                 if (form.password) payload.new_password = form.password;
                 res = await updateUser(payload);
@@ -113,7 +115,8 @@ export default function UsersPage() {
                     username: form.username,
                     password: form.password,
                     display_name: form.display_name,
-                    roles: form.roles.join(',')
+                    roles: form.roles.join(','),
+                    hide_floater: form.hide_floater
                 });
             }
 
@@ -268,6 +271,24 @@ export default function UsersPage() {
                                     <label className="form-label">{editingUser ? 'New Password (leave empty to keep current)' : 'Password'}</label>
                                     <input type="password" className="form-input" value={form.password}
                                         onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required={!editingUser} />
+                                </div>
+
+                                {/* Floating UI Settings */}
+                                <div className="form-group" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px', marginTop: '16px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={form.hide_floater}
+                                            onChange={(e) => setForm(f => ({ ...f, hide_floater: e.target.checked }))}
+                                            style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: 'var(--brand-primary)' }}
+                                        />
+                                        <div>
+                                            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Disable Floating Quote Summary</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.4, marginTop: '2px' }}>
+                                                Forces the hovering Draft Job box to be disabled for this user.
+                                            </div>
+                                        </div>
+                                    </label>
                                 </div>
 
                                 {/* Multi-Role Checkboxes */}
