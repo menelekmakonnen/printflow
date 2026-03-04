@@ -111,7 +111,11 @@ function requireAuth(token, allowedRoles) {
     }
 
     if (allowedRoles) {
-        var userRoles = (user.roles || '').split(',').map(function (r) { return r.trim(); });
+        var userRoles = (user.roles || '').split(',').map(function (r) {
+            var normalized = r.trim().toLowerCase().replace(/\s+/g, '_');
+            if (normalized === 'site_admin') return 'admin';
+            return normalized;
+        });
         var hasPermission = false;
         for (var i = 0; i < allowedRoles.length; i++) {
             if (userRoles.indexOf(allowedRoles[i]) >= 0) {

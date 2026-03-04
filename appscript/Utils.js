@@ -85,15 +85,19 @@ function appendRow(tabName, rowObject, headers) {
     sheet.appendRow(rowArray);
 }
 
-/**
- * Update a specific cell by row index and column header
- */
 function updateCell(tabName, rowIndex, header, value) {
     const sheet = getSheet(tabName);
-    const headersRaw = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const lastCol = sheet.getLastColumn() || 1;
+    const headersRaw = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     const headers = headersRaw.map(normalizeHeader);
-    const colIndex = headers.indexOf(normalizeHeader(header));
-    if (colIndex === -1) throw new Error(`Column "${header}" not found in ${tabName}`);
+    let colIndex = headers.indexOf(normalizeHeader(header));
+
+    // Auto-patch missing columns dynamically instead of throwing!
+    if (colIndex === -1) {
+        colIndex = headers.length;
+        sheet.getRange(1, colIndex + 1).setValue(header);
+    }
+
     sheet.getRange(rowIndex, colIndex + 1).setValue(value);
 }
 

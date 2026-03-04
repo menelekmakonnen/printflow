@@ -15,7 +15,11 @@ const ALL_ROLES = [
 
 function parseRoles(rolesStr) {
     if (!rolesStr) return [];
-    return String(rolesStr).split(',').map(r => r.trim()).filter(Boolean);
+    return String(rolesStr).split(',').map(r => {
+        let normalized = r.trim().toLowerCase().replace(/\s+/g, '_');
+        if (normalized === 'site_admin') return 'admin';
+        return normalized;
+    }).filter(Boolean);
 }
 
 function roleLabel(rolesStr) {
@@ -90,6 +94,7 @@ export default function UsersPage() {
         setMessage({ type: '', text: '' });
 
         try {
+            let res;
             if (editingUser) {
                 const payload = {
                     target_username: editingUser.username,

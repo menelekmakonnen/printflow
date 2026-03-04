@@ -13,7 +13,11 @@ const VALID_ROLES = ['receptionist', 'designer', 'finisher', 'admin', 'super_adm
  */
 function parseRoles(rolesStr) {
     if (!rolesStr) return [];
-    return String(rolesStr).split(',').map(r => r.trim()).filter(r => VALID_ROLES.includes(r));
+    return String(rolesStr).split(',').map(r => {
+        var normalized = r.trim().toLowerCase().replace(/\s+/g, '_');
+        if (normalized === 'site_admin') return 'admin';
+        return normalized;
+    }).filter(r => VALID_ROLES.includes(r));
 }
 
 /**
