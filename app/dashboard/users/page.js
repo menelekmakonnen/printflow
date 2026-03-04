@@ -216,7 +216,7 @@ export default function UsersPage() {
                                         </span>
                                     </td>
                                     <td style={{ color: 'var(--color-text-muted)' }}>
-                                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : '\u2014'}
+                                        {u.created_at ? new Date(u.created_at.toString().replace(/-/g, '/')).toLocaleDateString() : '\u2014'}
                                     </td>
                                     <td>
                                         <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
@@ -255,6 +255,11 @@ export default function UsersPage() {
                         </div>
                         <form onSubmit={handleSubmit}>
                             <div className="modal-body">
+                                {message.text && message.type === 'error' && (
+                                    <div className="alert alert-error" style={{ marginBottom: '16px' }}>
+                                        {message.text}
+                                    </div>
+                                )}
                                 {!editingUser && (
                                     <div className="form-group">
                                         <label className="form-label">Username</label>

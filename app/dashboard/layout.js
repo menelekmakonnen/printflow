@@ -59,7 +59,6 @@ function buildNavSections(roles) {
         addItem('Management', { href: '/dashboard/accounting', icon: IconCedis, label: 'Accounting' });
         addItem('Management', { href: '/dashboard/expenses', icon: IconClipboard, label: 'Expenses Tracking' });
         addItem('Management', { href: '/dashboard/users', icon: IconUsers, label: 'User Management' });
-        addItem('Management', { href: '/dashboard/roles', icon: IconShieldAlert, label: 'Roles Matrix' });
         addItem('Management', { href: '/dashboard/notifications', icon: IconBell, label: 'Notification Log' });
     }
 
@@ -300,7 +299,12 @@ export default function DashboardLayout({ children }) {
         );
     }
 
-    const userRoles = (user.roles || user.role || '').split(',').map(r => r.trim()).filter(Boolean);
+    const userRoles = (user.roles || user.role || '').split(',')
+        .map(r => {
+            const normalized = r.trim().toLowerCase().replace(/\s+/g, '_');
+            return normalized === 'site_admin' ? 'admin' : normalized;
+        })
+        .filter(Boolean);
     const navSections = buildNavSections(userRoles);
     const initials = (user.display_name || 'U')
         .split(' ')
@@ -349,7 +353,7 @@ export default function DashboardLayout({ children }) {
                         </svg>
                         {!sidebarCollapsed && <div style={{ fontSize: '1rem', fontWeight: 'bold', marginTop: '4px', color: 'var(--color-text-primary)' }}>{companyName}</div>}
                     </Link>
-                    {!sidebarCollapsed && <div className="sidebar-role">{formatRoles(user.roles || user.role)}</div>}
+                    {!sidebarCollapsed && <div className="sidebar-role">{user.display_name}</div>}
                 </div>
 
                 <nav className="sidebar-nav">
