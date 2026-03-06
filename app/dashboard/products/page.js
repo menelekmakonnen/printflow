@@ -36,7 +36,7 @@ export default function ProductsPage() {
             const cachedData = localStorage.getItem('printflow_products_cache_data');
             const cacheDate = localStorage.getItem('printflow_products_cache_date');
 
-            if (cachedData && cacheDate === today) {
+            if (cachedData && cacheDate === today && cachedData !== '[]' && cachedData.length > 5) {
                 try {
                     setItems(JSON.parse(cachedData));
                     setLoading(false);
@@ -63,8 +63,12 @@ export default function ProductsPage() {
         const res = await getProducts();
         if (res.success) {
             setItems(res.data);
-            localStorage.setItem('printflow_products_cache_data', JSON.stringify(res.data));
-            localStorage.setItem('printflow_products_cache_date', today);
+            if (res.data.length > 0) {
+                localStorage.setItem('printflow_products_cache_data', JSON.stringify(res.data));
+                localStorage.setItem('printflow_products_cache_date', today);
+            }
+        } else {
+            console.error('Products fetch error:', res.error);
         }
         setLoading(false);
     }, []);
