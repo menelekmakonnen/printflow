@@ -80,7 +80,22 @@ function appendRow(tabName, rowObject, headers) {
     const hdrRaw = existingData[0];
     const hdrNorm = hdrRaw.map(normalizeHeader);
 
-    // Default the row array using the normalized names
+    // Auto-patch missing headers natively
+    const newHeaders = [];
+    Object.keys(rowObject).forEach(key => {
+        if (!hdrNorm.includes(normalizeHeader(key))) {
+            newHeaders.push(key);
+            hdrNorm.push(normalizeHeader(key)); // register locally for the mapping below
+        }
+    });
+
+    if (newHeaders.length > 0) {
+        // Find first empty header column and write the new headers
+        const startCol = existingData[0].length + 1;
+        sheet.getRange(1, startCol, 1, newHeaders.length).setValues([newHeaders]);
+    }
+
+    // Default the row array using the dynamically expanded normalized names
     const rowArray = hdrNorm.map(h => rowObject[h] !== undefined ? rowObject[h] : '');
     sheet.appendRow(rowArray);
 }

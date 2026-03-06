@@ -11,7 +11,7 @@ const JOB_HEADERS = [
     'delivery_fee', 'delivery_address', 'delivery_status',
     'design_sample_url', 'created_by', 'updated_by',
     'created_at', 'approved_at', 'processing_started_at',
-    'finishing_started_at', 'completed_at'
+    'finishing_started_at', 'completed_at', 'line_items'
 ];
 
 // Valid status transitions (state machine)
@@ -44,7 +44,8 @@ function handleGetJobs(payload) {
                 job_description: j.job_description,
                 status: j.status,
                 created_at: j.created_at,
-                processing_started_at: j.processing_started_at
+                processing_started_at: j.processing_started_at,
+                line_items: j.line_items || '[]'
             }));
         } else if (rolesArray.includes('finisher') && !rolesArray.includes('designer')) {
             // Finisher sees only finishing jobs, no financials/contact
@@ -55,7 +56,8 @@ function handleGetJobs(payload) {
                 job_description: j.job_description,
                 status: j.status,
                 created_at: j.created_at,
-                finishing_started_at: j.finishing_started_at
+                finishing_started_at: j.finishing_started_at,
+                line_items: j.line_items || '[]'
             }));
         } else if (rolesArray.includes('designer') && rolesArray.includes('finisher')) {
             jobs = jobs.filter(j => ['approved', 'in_progress', 'pending_design_approval', 'design_rejected', 'approved_for_print', 'finishing'].includes(j.status));
@@ -66,7 +68,8 @@ function handleGetJobs(payload) {
                 status: j.status,
                 created_at: j.created_at,
                 processing_started_at: j.processing_started_at,
-                finishing_started_at: j.finishing_started_at
+                finishing_started_at: j.finishing_started_at,
+                line_items: j.line_items || '[]'
             }));
         }
     }
@@ -88,6 +91,18 @@ function handleGetJobs(payload) {
 
     // Sort by created_at descending (newest first)
     jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    // Deserialization sweep for array format payload ingestion
+    jobs = jobs.map(j => {
+        try {
+            if (j.line_items && typeof j.line_items === 'string') {
+                j.items = JSON.parse(j.line_items);
+            } else {
+                j.items = [];
+            }
+        } catch (e) { j.items = []; }
+        return j;
+    });
 
     return jsonResponse(jobs);
 }
@@ -114,6 +129,15 @@ function handleGetJob(payload) {
         delete job.notification_pref;
         delete job._rowIndex;
     }
+
+    // Inject Items into the frontend payload dynamically unconditionally for duplicate cloning
+    try {
+        if (job.line_items && typeof job.line_items === 'string') {
+            job.items = JSON.parse(job.line_items);
+        } else {
+            job.items = [];
+        }
+    } catch (e) { job.items = []; }
 
     return jsonResponse(job);
 }
@@ -167,7 +191,8 @@ function handleCreateJob(payload) {
         approved_at: '',
         processing_started_at: '',
         finishing_started_at: '',
-        completed_at: ''
+        completed_at: '',
+        line_items: payload.items && payload.items.length > 0 ? JSON.stringify(payload.items) : '[]'
     };
 
     appendRow(SHEET_JOBS, job, JOB_HEADERS);
