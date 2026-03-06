@@ -8,7 +8,7 @@ import {
     IconDashboard, IconClipboard, IconPlusCircle, IconGear,
     IconUsers, IconBell, IconScroll, IconQueue, IconScissors,
     IconMenu, IconLogout, IconChevronLeft, IconChevronRight,
-    IconCedis, IconX, IconTag, IconShieldAlert
+    IconCedis, IconX, IconTag, IconShieldAlert, IconCode
 } from '@/lib/icons';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -119,6 +119,51 @@ export default function DashboardLayout({ children }) {
     // Draft Floater State
     const [draftQuote, setDraftQuote] = useState(null);
     const [hideFloater, setHideFloater] = useState(false);
+
+    // Custom Developer Console State
+    const [showConsole, setShowConsole] = useState(false);
+    const [consoleExpanded, setConsoleExpanded] = useState(false);
+    const [consoleLogs, setConsoleLogs] = useState([]);
+    const logsEndRef = useRef(null);
+
+    // Initializer to bind custom console interceptor globally
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const checkConsolePref = () => {
+            setShowConsole(localStorage.getItem('printflow_enable_console') === 'true');
+        };
+
+        checkConsolePref();
+        window.addEventListener('storage', checkConsolePref);
+
+        // Intercept console.log and console.error
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        console.log = (...args) => {
+            originalLog(...args);
+            setConsoleLogs(prev => [...prev, { type: 'log', time: new Date().toLocaleTimeString(), args }]);
+        };
+
+        console.error = (...args) => {
+            originalError(...args);
+            setConsoleLogs(prev => [...prev, { type: 'error', time: new Date().toLocaleTimeString(), args }]);
+        };
+
+        return () => {
+            window.removeEventListener('storage', checkConsolePref);
+            console.log = originalLog;
+            console.error = originalError;
+        };
+    }, []);
+
+    // Auto-scroll the custom console
+    useEffect(() => {
+        if (consoleExpanded && logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [consoleLogs, consoleExpanded]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -437,6 +482,92 @@ export default function DashboardLayout({ children }) {
                     {children}
                 </div>
             </main>
+
+            {/* Custom Developer Console */}
+            {showConsole && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    left: '24px',
+                    width: consoleExpanded ? 'min(600px, 90vw)' : 'auto',
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    backdropFilter: 'blur(8px)',
+                    color: '#e2e8f0',
+                    borderRadius: 'var(--radius-lg)',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    zIndex: 9999,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}>
+                    {/* Header Bar */}
+                    <div style={{
+                        padding: '12px 16px',
+                        borderBottom: consoleExpanded ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        background: 'linear-gradient(to right, rgba(0,0,0,0.2), transparent)'
+                    }} onClick={() => setConsoleExpanded(!consoleExpanded)}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.875rem' }}>
+                            <IconCode size={18} color="#38bdf8" />
+                            System Console
+                            <span style={{
+                                background: 'rgba(255,255,255,0.1)', padding: '2px 6px',
+                                borderRadius: '12px', fontSize: '0.7rem', color: '#94a3b8'
+                            }}>
+                                {consoleLogs.length} events
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            {consoleExpanded && (
+                                <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setConsoleLogs([]); }} style={{ color: '#94a3b8', transform: 'scale(0.8)' }} title="Clear Logs">
+                                    <IconX size={16} />
+                                </button>
+                            )}
+                            <IconChevronRight size={16} color="#94a3b8" style={{ transform: consoleExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+                        </div>
+                    </div>
+
+                    {/* Native Log Dump */}
+                    {consoleExpanded && (
+                        <div style={{
+                            maxHeight: '400px',
+                            overflowY: 'auto',
+                            padding: '16px',
+                            fontFamily: 'monospace',
+                            fontSize: '0.8125rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                        }}>
+                            {consoleLogs.length === 0 ? (
+                                <div style={{ color: '#64748b', fontStyle: 'italic' }}>Awaiting system events...</div>
+                            ) : (
+                                consoleLogs.map((log, i) => (
+                                    <div key={i} style={{
+                                        color: log.type === 'error' ? '#f87171' : '#a3e635',
+                                        background: 'rgba(0,0,0,0.2)',
+                                        padding: '8px',
+                                        borderRadius: '4px',
+                                        borderLeft: `3px solid ${log.type === 'error' ? '#ef4444' : '#22c55e'}`,
+                                        wordBreak: 'break-all',
+                                        whiteSpace: 'pre-wrap'
+                                    }}>
+                                        <div style={{ color: '#64748b', fontSize: '0.7rem', marginBottom: '4px' }}>[{log.time}]</div>
+                                        {/* Extremely basic object to string parser for the native array objects */}
+                                        {log.args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}
+                                    </div>
+                                ))
+                            )}
+                            <div ref={logsEndRef} />
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Draft Job Floater */}
             {draftQuote && !hideFloater && (

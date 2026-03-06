@@ -146,7 +146,7 @@ function handleCreateJob(payload) {
         job_id: jobId,
         client_name: client_name,
         client_email: client_email || '',
-        client_phone: client_phone ? "'" + client_phone : '',
+        client_phone: client_phone ? "'" + String(client_phone) : '',
         notification_pref: notification_pref || 'email',
         job_type: job_type,
         job_description: job_description || '',

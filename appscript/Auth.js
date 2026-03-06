@@ -43,6 +43,7 @@ function handleLogin(payload) {
         token: token,
         username: user.username,
         roles: userRoles,
+        role: userRoles, // Backwards compatibility with native Sheet headers
         display_name: user.display_name,
         user_id: user.user_id || user.username,
         created_at: now(),

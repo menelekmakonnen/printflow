@@ -178,6 +178,16 @@ export default function JobDetailPage() {
                 rate: Number(i.rate || 0),
                 quantity: Number(i.quantity || i.qty || 1),
                 discount: 0,
+                discountType: 'cedi',
+                cost: Number(i.cost || 0),
+                costType: 'cedi',
+                design_service: false, // Defaulting off for duplication safety
+                design_id: null,
+                design_cost: 0,
+                design_costType: 'cedi',
+                design_discount: 0,
+                design_discountType: 'cedi',
+                design_notes: '',
                 unit: i.unit || 'pcs'
             }))
         };

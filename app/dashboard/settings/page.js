@@ -15,6 +15,7 @@ export default function SettingsPage() {
     const [newType, setNewType] = useState('');
     const [logoBase64, setLogoBase64] = useState('');
     const [enableTax, setEnableTax] = useState(true);
+    const [enableConsole, setEnableConsole] = useState(false);
 
     // --- Crop State ---
     const [cropImageSrc, setCropImageSrc] = useState(null);
@@ -37,6 +38,9 @@ export default function SettingsPage() {
     useEffect(() => {
         setUserState(getUser());
         loadConfig();
+        if (typeof window !== 'undefined') {
+            setEnableConsole(localStorage.getItem('printflow_enable_console') === 'true');
+        }
     }, [loadConfig]);
 
     async function handleToggleTax(newVal) {
@@ -51,6 +55,19 @@ export default function SettingsPage() {
             setMessage({ type: 'error', text: res.error });
         }
         setSaving(false);
+    }
+
+    function handleToggleConsole(newVal) {
+        setEnableConsole(newVal);
+        if (typeof window !== 'undefined') {
+            if (newVal) {
+                localStorage.setItem('printflow_enable_console', 'true');
+            } else {
+                localStorage.removeItem('printflow_enable_console');
+            }
+            // Dispatch a native storage event to force the Layout observer to map immediately across tabs/frames
+            window.dispatchEvent(new Event('storage'));
+        }
     }
 
     async function handleLogoUpload(e, isDark = false) {
@@ -234,6 +251,29 @@ export default function SettingsPage() {
                             type="checkbox"
                             checked={enableTax}
                             onChange={(e) => handleToggleTax(e.target.checked)}
+                            disabled={saving}
+                            style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--color-accent)' }}
+                        />
+                    </label>
+                </div>
+            </div>
+
+            {/* Developer Configuration */}
+            <div className="card" style={{ marginBottom: 'var(--space-xl)' }}>
+                <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Developer / Debugging</h3>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 'var(--space-md)', borderBottom: '1px solid var(--color-border)', marginBottom: 'var(--space-md)' }}>
+                    <div>
+                        <div style={{ fontWeight: 600 }}>Enable Custom Console Logs</div>
+                        <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', maxWidth: '500px' }}>
+                            Projects a floating window over the Dashboard tracking API responses and backend errors directly in the UI. Essential for troubleshooting "Forbidden" or layout crashes without opening Browser DevTools.
+                        </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                        <input
+                            type="checkbox"
+                            checked={enableConsole}
+                            onChange={(e) => handleToggleConsole(e.target.checked)}
                             disabled={saving}
                             style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--color-accent)' }}
                         />
