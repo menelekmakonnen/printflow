@@ -3,14 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-    getJob, getUser, approveJob, receiveJob,
+    getJob, getUser, approveJob, cancelJob, receiveJob,
     processingComplete, completeJob, getNotifications, hasAnyRole,
     getInventory, deductInventory, sendDesignReview
 } from '@/lib/api';
 import {
     IconArrowLeft, IconTicket, IconCheckCircle, IconWrench,
     IconScissors, IconTrophy, IconFolder, IconExternalLink,
-    IconXCircle, IconPrinter, IconFileText
+    IconXCircle, IconPrinter, IconFileText, IconCopy
 } from '@/lib/icons';
 
 const STATUS_CONFIG = {
@@ -38,7 +38,7 @@ export default function JobDetailPage() {
     const jobId = params.id;
 
     const [job, setJob] = useState(null);
-    const [user, setUserState] = useState(null);
+    const [user, setUserState] = useState(() => getUser());
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
@@ -83,7 +83,6 @@ export default function JobDetailPage() {
     }, [jobId]);
 
     useEffect(() => {
-        setUserState(getUser());
         loadJob();
     }, [loadJob]);
 
@@ -161,6 +160,25 @@ export default function JobDetailPage() {
         setActionLoading(false);
     }
 
+    function handleDuplicateJob() {
+        if (!confirm('This will create a new draft quote pre-filled with this job\'s details. Proceed?')) return;
+
+        const draftData = {
+            items: (job.items || []).map(i => ({ ...i })),
+            standalone_design: job.standalone_design || null,
+            subtotal: Number(job.subtotal || 0),
+            clientName: job.client_name || '',
+            clientPhone: job.client_phone || '',
+            clientEmail: job.client_email || '',
+            jobType: job.job_type || 'regular',
+            requiresDesign: !!job.requires_design,
+            designSampleUrl: job.design_sample_url || ''
+        };
+
+        localStorage.setItem('printflow_draft_job', JSON.stringify(draftData));
+        router.push('/dashboard/jobs/new');
+    }
+
     if (loading) {
         return <div className="loading-center"><div className="spinner"></div></div>;
     }
@@ -209,20 +227,36 @@ export default function JobDetailPage() {
                     <button className="btn btn-ghost" onClick={() => setShowTicket(!showTicket)} style={{ gap: '6px' }}>
                         <IconTicket size={16} /> {showTicket ? 'Hide' : 'View'} Ticket
                     </button>
+                    {(isAdmin || hasAnyRole(['receptionist', 'designer'])) && (
+                        <button className="btn btn-primary" onClick={handleDuplicateJob} style={{ gap: '6px' }}>
+                            <IconCopy size={16} /> Duplicate Job
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* BIG ACTION BUTTONS */}
             <div style={{ marginBottom: 'var(--space-xl)' }}>
                 {job.status === 'pending_payment' && (hasAnyRole(['receptionist']) || isAdmin) && (
-                    <button
-                        className="big-btn big-btn-approve"
-                        onClick={() => handleAction(approveJob, 'approve this job')}
-                        disabled={actionLoading}
-                    >
-                        <IconCheckCircle size={22} />
-                        {actionLoading ? 'Processing...' : 'APPROVE \u2014 Payment Confirmed'}
-                    </button>
+                    <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+                        <button
+                            className="big-btn big-btn-approve"
+                            style={{ flex: 1 }}
+                            onClick={() => handleAction(approveJob, 'approve this job')}
+                            disabled={actionLoading}
+                        >
+                            <IconCheckCircle size={22} />
+                            {actionLoading ? 'Processing...' : 'APPROVE \u2014 Payment Confirmed'}
+                        </button>
+                        <button
+                            className="btn btn-ghost"
+                            style={{ color: 'var(--color-error)', border: '1px solid var(--color-error)', padding: '0 24px' }}
+                            onClick={() => handleAction(cancelJob, 'cancel this job')}
+                            disabled={actionLoading}
+                        >
+                            Cancel Job
+                        </button>
+                    </div>
                 )}
 
                 {job.status === 'approved' && (hasAnyRole(['designer']) || isAdmin) && (

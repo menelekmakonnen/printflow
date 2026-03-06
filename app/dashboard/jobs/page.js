@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getJobs } from '@/lib/api';
 import { IconPlusCircle, IconSearch, IconInbox } from '@/lib/icons';
 import Link from 'next/link';

@@ -3,34 +3,73 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProducts, updateProduct, addProduct, getUser, hasAnyRole } from '@/lib/api';
-import { IconPlus, IconX, IconCedis } from '@/lib/icons';
+import { IconPlus, IconX, IconCedis, IconRefreshCw, IconCheckCircle, IconLoader } from '@/lib/icons';
 
 export default function ProductsPage() {
     const router = useRouter();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [user, setUserState] = useState(null);
+    const [user, setUserState] = useState(() => getUser());
     const [showModal, setShowModal] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [filterType, setFilterType] = useState('All');
     const [editingItem, setEditingItem] = useState(null);
     const [formLoading, setFormLoading] = useState(false);
 
+    const [backgroundSyncing, setBackgroundSyncing] = useState(false);
+    const [syncDone, setSyncDone] = useState(false);
+
     // Quote Cart State
     const [quoteItems, setQuoteItems] = useState([]);
 
-    const loadProducts = useCallback(async () => {
+    const loadProducts = useCallback(async (force = false) => {
+        const today = new Date().toDateString();
+        const isFreshLogin = !sessionStorage.getItem('printflow_session_active');
+
+        if (isFreshLogin) {
+            sessionStorage.setItem('printflow_session_active', '1');
+            localStorage.removeItem('printflow_products_cache_data');
+            localStorage.removeItem('printflow_products_cache_date');
+        }
+
+        if (!force && !isFreshLogin) {
+            const cachedData = localStorage.getItem('printflow_products_cache_data');
+            const cacheDate = localStorage.getItem('printflow_products_cache_date');
+
+            if (cachedData && cacheDate === today) {
+                try {
+                    setItems(JSON.parse(cachedData));
+                    setLoading(false);
+
+                    // Background silent check
+                    setBackgroundSyncing(true);
+                    setSyncDone(false);
+                    const res = await getProducts();
+                    if (res.success) {
+                        setItems(res.data);
+                        localStorage.setItem('printflow_products_cache_data', JSON.stringify(res.data));
+                    }
+                    setBackgroundSyncing(false);
+                    setSyncDone(true);
+                    setTimeout(() => setSyncDone(false), 4000);
+                    return;
+                } catch (e) {
+                    console.error("Cache parsing error", e);
+                }
+            }
+        }
+
         setLoading(true);
         const res = await getProducts();
         if (res.success) {
             setItems(res.data);
+            localStorage.setItem('printflow_products_cache_data', JSON.stringify(res.data));
+            localStorage.setItem('printflow_products_cache_date', today);
         }
         setLoading(false);
     }, []);
 
     useEffect(() => {
-        const u = getUser();
-        setUserState(u);
         loadProducts();
     }, [loadProducts]);
 
@@ -189,8 +228,24 @@ export default function ProductsPage() {
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xl)' }}>
                     <div>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Products & Services</h2>
-                        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Browse standard pricing and build quotes</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Products & Services</h2>
+
+                            {backgroundSyncing ? (
+                                <span style={{ color: 'var(--color-primary)', display: 'flex', alignItems: 'center', animation: 'spin 1s linear infinite' }} title="Syncing missing updates...">
+                                    <IconLoader size={16} />
+                                </span>
+                            ) : syncDone ? (
+                                <span style={{ color: 'var(--color-completed)', display: 'flex', alignItems: 'center' }} title="Synced successfully">
+                                    <IconCheckCircle size={16} />
+                                </span>
+                            ) : (
+                                <button className="btn btn-ghost" onClick={() => loadProducts(true)} style={{ padding: '4px', height: 'auto', minHeight: 'auto', color: 'var(--color-text-muted)' }} title="Force Refresh Data">
+                                    <IconRefreshCw size={14} />
+                                </button>
+                            )}
+                        </div>
+                        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0 0' }}>Browse standard pricing and build quotes</p>
                     </div>
                     {canEdit && (
                         <button className="btn btn-primary" onClick={openCreate} style={{ gap: '6px' }}>

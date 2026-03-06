@@ -230,6 +230,26 @@ function handleApproveJob(payload) {
 }
 
 /**
+ * Cancel a job
+ */
+function handleCancelJob(payload) {
+    const auth = requireAuth(payload.token, ['receptionist', 'admin', 'super_admin']);
+    if (auth.error) return auth.error;
+
+    const job = findRow(SHEET_JOBS, 'job_id', payload.job_id);
+    if (!job) return errorResponse('Job not found', 404);
+
+    updateRow(SHEET_JOBS, job._rowIndex, {
+        status: 'cancelled',
+        updated_by: auth.user.username
+    });
+
+    logActivity(auth.user.username, 'cancel_job', `Cancelled job ${payload.job_id}`);
+
+    return jsonResponse({ message: `Job ${payload.job_id} has been cancelled successfully`, status: 'cancelled' });
+}
+
+/**
  * Designer receives a job (starts processing)
  */
 function handleReceiveJob(payload) {

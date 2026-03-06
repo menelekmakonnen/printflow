@@ -69,6 +69,7 @@ function routeAction(action, payload) {
         'getJob': handleGetJob,
         'createJob': handleCreateJob,
         'approveJob': handleApproveJob,
+        'cancelJob': handleCancelJob,
         'receiveJob': handleReceiveJob,
         'processingComplete': handleProcessingComplete,
         'completeJob': handleCompleteJob,
