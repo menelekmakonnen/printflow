@@ -1,10 +1,1 @@
-const URL = 'https://script.google.com/macros/s/AKfycbyQMiAAVzhDmnuj9YXjKkErPOHrOXIfTyMdgBpFHxEj6BwdIBzNqtAZwfzY2o7Z9js/exec';
-(async () => {
-    const res = await fetch(URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'getProducts', token: 'mockToken' }),
-        headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await res.json();
-    console.log(JSON.stringify(data, null, 2).substring(0, 2000));
-})();
+const URL = 'https://script.google.com/macros/s/AKfycbw8aqeAiGhyLrd4JbmuTDr_UQRRf5tHnH_BSbVpMk5DoPu88M_tQmfAXK_xTXClFuPv/exec?action=debugProducts'; (async () => { const res = await fetch(URL); const json = await res.json(); console.log(json.data.map(i => ({ name: i.item_name, type: i.product_type, status: i.status })).slice(0, 10)); })();
