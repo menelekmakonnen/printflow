@@ -173,7 +173,7 @@ export default function DashboardHome() {
                                             <div className="job-card-meta">
                                                 <span>{(job.job_type || '').replace(/_/g, ' ')}</span>
                                                 {job.created_at && (
-                                                    <span>{new Date(job.created_at).toLocaleDateString()}</span>
+                                                    <span>{new Date(job.created_at).getTime() ? new Date(job.created_at).toLocaleDateString() : job.created_at}</span>
                                                 )}
                                             </div>
                                         </div>

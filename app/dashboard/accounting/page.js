@@ -42,6 +42,7 @@ export default function AccountingPage() {
         return jobs.filter(job => {
             if (!job.created_at) return false;
             const jobDate = new Date(job.created_at);
+            if (isNaN(jobDate.getTime())) return true; // Keep it if date parsing fails, or handle differently
 
             if (filterDate === 'day') {
                 return jobDate >= startOfDay && jobDate <= now;
@@ -73,7 +74,11 @@ export default function AccountingPage() {
                 return jobDate >= s && jobDate <= e;
             }
             return true;
-        }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }).sort((a, b) => {
+            const dA = new Date(a.created_at).getTime() || 0;
+            const dB = new Date(b.created_at).getTime() || 0;
+            return dB - dA;
+        });
     }, [jobs, filterDate, customStart, customEnd]);
 
     const filteredExpenses = useMemo(() => {
@@ -130,7 +135,7 @@ export default function AccountingPage() {
         const csvRows = [headers.join(',')];
         filteredJobs.forEach(job => {
             const row = [
-                new Date(job.created_at).toLocaleDateString(),
+                new Date(job.created_at).getTime() ? new Date(job.created_at).toLocaleDateString() : job.created_at,
                 job.job_id,
                 `"${(job.client_name || '').replace(/"/g, '""')}"`,
                 `"${(job.job_type || '').replace(/"/g, '""')}"`,
@@ -308,7 +313,7 @@ export default function AccountingPage() {
                                 </tr>
                             ) : filteredJobs.map(job => (
                                 <tr key={job.job_id}>
-                                    <td>{new Date(job.created_at).toLocaleDateString()}</td>
+                                    <td>{new Date(job.created_at).getTime() ? new Date(job.created_at).toLocaleDateString() : job.created_at}</td>
                                     <td>
                                         <div style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
                                             {job.job_id}

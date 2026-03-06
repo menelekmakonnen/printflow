@@ -216,7 +216,9 @@ export default function UsersPage() {
                                         </span>
                                     </td>
                                     <td style={{ color: 'var(--color-text-muted)' }}>
-                                        {u.created_at ? new Date(u.created_at.toString().replace(/-/g, '/')).toLocaleDateString() : '\u2014'}
+                                        {u.created_at && !isNaN(new Date(u.created_at).getTime())
+                                            ? new Date(u.created_at).toLocaleDateString()
+                                            : (u.created_at || '\u2014')}
                                     </td>
                                     <td>
                                         <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>

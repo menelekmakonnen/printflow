@@ -13,6 +13,9 @@ function doGet(e) {
     if (action === 'health') {
         return jsonResponse({ message: 'PrintFlow API is running', version: '1.0.0' });
     }
+    if (action === 'debugProducts') {
+        return jsonResponse(getSheetData('Products'));
+    }
 
     // For GET requests that need auth, pass token as query param
     const payload = e ? e.parameter : {};

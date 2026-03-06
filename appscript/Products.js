@@ -19,7 +19,10 @@ function handleGetProducts(payload) {
     let products = getSheetData(SHEET_PRODUCTS);
 
     if (payload.status) {
-        products = products.filter(p => String(p.status).toLowerCase() === String(payload.status).toLowerCase());
+        products = products.filter(p => {
+            const s = String(p.status || 'Active').toLowerCase();
+            return s === String(payload.status).toLowerCase();
+        });
     }
 
     return jsonResponse(products);

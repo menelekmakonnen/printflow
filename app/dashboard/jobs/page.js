@@ -28,16 +28,17 @@ export default function JobsPage() {
     const [filter, setFilter] = useState('all');
     const [search, setSearch] = useState('');
 
-    useEffect(() => {
-        loadJobs();
-    }, []);
-
-    async function loadJobs() {
+    const loadJobs = useCallback(async () => {
         setLoading(true);
         const res = await getJobs();
         if (res.success) setJobs(res.data);
         setLoading(false);
-    }
+    }, []);
+
+    useEffect(() => {
+        loadJobs();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const filtered = jobs.filter(j => {
         if (filter !== 'all' && j.status !== filter) return false;
@@ -146,7 +147,7 @@ export default function JobsPage() {
                                         <div className="job-card-meta">
                                             <span>{(job.job_type || '').replace(/_/g, ' ')}</span>
                                             {job.created_at && (
-                                                <span>{new Date(job.created_at).toLocaleDateString()}</span>
+                                                <span>{new Date(job.created_at).getTime() ? new Date(job.created_at).toLocaleDateString() : job.created_at}</span>
                                             )}
                                         </div>
                                     </div>
