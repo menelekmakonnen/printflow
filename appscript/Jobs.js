@@ -30,31 +30,45 @@ function handleGetJobs(payload) {
     if (auth.error) return auth.error;
 
     let jobs = getSheetData(SHEET_JOBS);
-    const { role } = auth.user;
+    const rolesArray = String(auth.user.roles || auth.user.role || '').split(',').map(r => r.trim());
+    const isSuper = rolesArray.includes('admin') || rolesArray.includes('super_admin') || rolesArray.includes('receptionist');
 
     // Role-based filtering
-    if (role === 'designer') {
-        // Designer sees approved + in_progress, no financials/contact
-        jobs = jobs.filter(j => ['approved', 'in_progress'].includes(j.status));
-        jobs = jobs.map(j => ({
-            job_id: j.job_id,
-            job_type: j.job_type,
-            job_description: j.job_description,
-            status: j.status,
-            created_at: j.created_at,
-            processing_started_at: j.processing_started_at
-        }));
-    } else if (role === 'finisher') {
-        // Finisher sees only finishing jobs, no financials/contact
-        jobs = jobs.filter(j => j.status === 'finishing');
-        jobs = jobs.map(j => ({
-            job_id: j.job_id,
-            job_type: j.job_type,
-            job_description: j.job_description,
-            status: j.status,
-            created_at: j.created_at,
-            finishing_started_at: j.finishing_started_at
-        }));
+    if (!isSuper) {
+        if (rolesArray.includes('designer') && !rolesArray.includes('finisher')) {
+            // Designer sees approved + in_progress + design states, no financials/contact
+            jobs = jobs.filter(j => ['approved', 'in_progress', 'pending_design_approval', 'design_rejected', 'approved_for_print'].includes(j.status));
+            jobs = jobs.map(j => ({
+                job_id: j.job_id,
+                job_type: j.job_type,
+                job_description: j.job_description,
+                status: j.status,
+                created_at: j.created_at,
+                processing_started_at: j.processing_started_at
+            }));
+        } else if (rolesArray.includes('finisher') && !rolesArray.includes('designer')) {
+            // Finisher sees only finishing jobs, no financials/contact
+            jobs = jobs.filter(j => j.status === 'finishing');
+            jobs = jobs.map(j => ({
+                job_id: j.job_id,
+                job_type: j.job_type,
+                job_description: j.job_description,
+                status: j.status,
+                created_at: j.created_at,
+                finishing_started_at: j.finishing_started_at
+            }));
+        } else if (rolesArray.includes('designer') && rolesArray.includes('finisher')) {
+            jobs = jobs.filter(j => ['approved', 'in_progress', 'pending_design_approval', 'design_rejected', 'approved_for_print', 'finishing'].includes(j.status));
+            jobs = jobs.map(j => ({
+                job_id: j.job_id,
+                job_type: j.job_type,
+                job_description: j.job_description,
+                status: j.status,
+                created_at: j.created_at,
+                processing_started_at: j.processing_started_at,
+                finishing_started_at: j.finishing_started_at
+            }));
+        }
     }
 
     // Status filter
@@ -88,10 +102,11 @@ function handleGetJob(payload) {
     const job = findRow(SHEET_JOBS, 'job_id', payload.job_id);
     if (!job) return errorResponse('Job not found', 404);
 
-    const { role } = auth.user;
+    const rolesArray = String(auth.user.roles || auth.user.role || '').split(',').map(r => r.trim());
+    const isSuper = rolesArray.includes('admin') || rolesArray.includes('super_admin') || rolesArray.includes('receptionist');
 
     // Strip sensitive data for production roles
-    if (role === 'designer' || role === 'finisher') {
+    if (!isSuper && (rolesArray.includes('designer') || rolesArray.includes('finisher'))) {
         delete job.client_email;
         delete job.client_phone;
         delete job.total_amount;
@@ -131,7 +146,7 @@ function handleCreateJob(payload) {
         job_id: jobId,
         client_name: client_name,
         client_email: client_email || '',
-        client_phone: client_phone || '',
+        client_phone: client_phone ? "'" + client_phone : '',
         notification_pref: notification_pref || 'email',
         job_type: job_type,
         job_description: job_description || '',

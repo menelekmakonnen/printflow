@@ -164,15 +164,22 @@ export default function JobDetailPage() {
         if (!confirm('This will create a new draft quote pre-filled with this job\'s details. Proceed?')) return;
 
         const draftData = {
-            items: (job.items || []).map(i => ({ ...i })),
-            standalone_design: job.standalone_design || null,
-            subtotal: Number(job.subtotal || 0),
-            clientName: job.client_name || '',
-            clientPhone: job.client_phone || '',
-            clientEmail: job.client_email || '',
-            jobType: job.job_type || 'regular',
-            requiresDesign: !!job.requires_design,
-            designSampleUrl: job.design_sample_url || ''
+            form: {
+                client_name: job.client_name || '',
+                client_phone: job.client_phone || '',
+                client_email: job.client_email || '',
+                job_type: job.job_type || 'regular',
+                requires_design: !!job.requires_design,
+                design_sample_url: job.design_sample_url || ''
+            },
+            lineItems: (job.items || []).map(i => ({
+                productId: i.item_id || 'CUSTOM-' + Math.random().toString(36).substr(2, 9),
+                name: i.item_name || i.name || '',
+                rate: Number(i.rate || 0),
+                quantity: Number(i.quantity || i.qty || 1),
+                discount: 0,
+                unit: i.unit || 'pcs'
+            }))
         };
 
         localStorage.setItem('printflow_draft_job', JSON.stringify(draftData));

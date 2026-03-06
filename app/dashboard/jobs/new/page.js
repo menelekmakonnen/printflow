@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createJob, uploadFile, getProducts, getConfig } from '@/lib/api';
 import { IconArrowLeft, IconPlus, IconMinus, IconX, IconPlusCircle, IconTrash, IconUpload } from '@/lib/icons';
@@ -196,9 +196,11 @@ export default function NewJobPage() {
 
     const finalTotal = afterGlobalDiscount + taxAmount + deliveryDelta;
 
+    const isSubmittingRef = useRef(false);
+
     // Save Draft to LocalStorage
     useEffect(() => {
-        if (!loading) {
+        if (!loading && !isSubmittingRef.current) {
             if (lineItems.length > 0 || form.client_name || form.requires_design) {
                 localStorage.setItem('printflow_draft_job', JSON.stringify({
                     form,
@@ -436,6 +438,18 @@ export default function NewJobPage() {
         };
 
         try {
+            setSubmitting(true);
+            isSubmittingRef.current = true;
+            setError('');
+
+            // Optional: check valid emails
+            if (form.client_email && !/\S+@\S+\.\S+/.test(form.client_email)) {
+                setError('Invalid email address format');
+                setSubmitting(false);
+                isSubmittingRef.current = false;
+                return;
+            }
+
             // Process files concurrently
             const base64Files = await Promise.all(files.map(file => {
                 return new Promise((resolve, reject) => {
@@ -452,6 +466,9 @@ export default function NewJobPage() {
 
             const res = await createJob(payload);
             if (res.success) {
+                // Clear draft on success FIRST before async upload starts blocking execution
+                localStorage.removeItem('printflow_draft_job');
+
                 // Upload files to the created job folder
                 for (const fileData of base64Files) {
                     try {
@@ -461,16 +478,17 @@ export default function NewJobPage() {
                     }
                 }
 
-                // Clear draft on success
-                localStorage.removeItem('printflow_draft_job');
+                // Safe redirect
                 router.push(`/dashboard/jobs/${res.data.job_id}`);
             } else {
                 setError(res.error || 'Failed to create job');
                 setSubmitting(false);
+                isSubmittingRef.current = false;
             }
         } catch (err) {
             setError('Connection error \u2014 please try again');
             setSubmitting(false);
+            isSubmittingRef.current = false;
         }
     }
 

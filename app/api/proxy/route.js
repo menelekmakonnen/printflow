@@ -4,7 +4,7 @@
  */
 
 export async function POST(request) {
-    const APPS_SCRIPT_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
+    const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
 
     if (!APPS_SCRIPT_URL) {
         return Response.json(
@@ -44,7 +44,7 @@ export async function POST(request) {
 }
 
 export async function GET(request) {
-    const APPS_SCRIPT_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
+    const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
     if (!APPS_SCRIPT_URL) {
         return Response.json({ success: false, error: 'Not configured' }, { status: 500 });
     }
