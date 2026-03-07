@@ -48,7 +48,7 @@ function normalizeHeader(h) {
  */
 function getSheetData(tabName) {
     const sheet = getSheet(tabName);
-    const data = sheet.getDataRange().getValues();
+    const data = sheet.getDataRange().getDisplayValues();
     if (data.length <= 1) return [];
 
     const headers = data[0].map(normalizeHeader);

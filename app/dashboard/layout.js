@@ -141,7 +141,7 @@ export default function DashboardLayout({ children }) {
         const originalLog = console.log;
         const originalError = console.error;
 
-        window.appLog = (type, timeStr, ...args) => {
+        window.appLog = (type, ...args) => {
             setConsoleLogs(prev => {
                 const safeArgs = args.map(a => {
                     if (a instanceof Error) return a.toString();

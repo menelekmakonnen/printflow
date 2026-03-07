@@ -14,7 +14,8 @@ const STATUS_CONFIG = {
     approved: { label: 'Approved', badge: 'badge-approved' },
     in_progress: { label: 'In Progress', badge: 'badge-progress' },
     finishing: { label: 'Finishing', badge: 'badge-finishing' },
-    completed: { label: 'Completed', badge: 'badge-completed' }
+    completed: { label: 'Completed', badge: 'badge-completed' },
+    cancelled: { label: 'Cancelled', badge: 'badge-error' }
 };
 
 export default function DashboardHome() {

@@ -10,7 +10,8 @@ const STATUS_CONFIG = {
     approved: { label: 'Approved', badge: 'badge-approved' },
     in_progress: { label: 'In Progress', badge: 'badge-progress' },
     finishing: { label: 'Finishing', badge: 'badge-finishing' },
-    completed: { label: 'Completed', badge: 'badge-completed' }
+    completed: { label: 'Completed', badge: 'badge-completed' },
+    cancelled: { label: 'Cancelled', badge: 'badge-error' }
 };
 
 const FILTER_TABS = [
@@ -19,7 +20,8 @@ const FILTER_TABS = [
     { key: 'approved', label: 'Approved' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'finishing', label: 'Finishing' },
-    { key: 'completed', label: 'Completed' }
+    { key: 'completed', label: 'Completed' },
+    { key: 'cancelled', label: 'Cancelled' }
 ];
 
 export default function JobsPage() {

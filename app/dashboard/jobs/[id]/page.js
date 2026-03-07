@@ -171,7 +171,11 @@ export default function JobDetailPage() {
                 client_email: job.client_email || '',
                 job_type: job.job_type || 'regular',
                 requires_design: !!job.requires_design,
-                design_sample_url: job.design_sample_url || ''
+                design_sample_url: job.design_sample_url || '',
+                requires_delivery: !!job.requires_delivery,
+                delivery_fee: Number(job.delivery_fee || 0),
+                delivery_address: job.delivery_address || '',
+                delivery_notes: job.delivery_notes || ''
             },
             lineItems: (job.items || []).map(i => ({
                 productId: i.item_id || 'CUSTOM-' + Math.random().toString(36).substr(2, 9),
@@ -255,7 +259,7 @@ export default function JobDetailPage() {
 
             {/* BIG ACTION BUTTONS */}
             <div style={{ marginBottom: 'var(--space-xl)' }}>
-                {job.status === 'pending_payment' && (hasAnyRole(['receptionist']) || isAdmin) && (
+                {(job.status === 'pending_payment' || job.status === 'pending') && (hasAnyRole(['receptionist']) || isAdmin) && (
                     <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
                         <button
                             className="big-btn big-btn-approve"
