@@ -141,6 +141,17 @@ export default function DashboardLayout({ children }) {
         const originalLog = console.log;
         const originalError = console.error;
 
+        window.appLog = (type, timeStr, ...args) => {
+            setConsoleLogs(prev => {
+                const safeArgs = args.map(a => {
+                    if (a instanceof Error) return a.toString();
+                    try { return JSON.parse(JSON.stringify(a)); }
+                    catch (e) { return String(a); }
+                });
+                return [...prev, { type, time: new Date().toLocaleTimeString(), args: safeArgs }];
+            });
+        };
+
         console.log = (...args) => {
             originalLog(...args);
             setConsoleLogs(prev => [...prev, { type: 'log', time: new Date().toLocaleTimeString(), args }]);
@@ -153,6 +164,7 @@ export default function DashboardLayout({ children }) {
 
         return () => {
             window.removeEventListener('storage', checkConsolePref);
+            delete window.appLog;
             console.log = originalLog;
             console.error = originalError;
         };

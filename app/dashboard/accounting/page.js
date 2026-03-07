@@ -112,7 +112,7 @@ export default function AccountingPage() {
     // Calculate Summaries
     const totalInvoiced = filteredJobs.reduce((sum, j) => sum + Number(j.total_amount || 0), 0);
     const paidJobs = filteredJobs.filter(j => j.payment_status === 'paid');
-    const unpaidJobs = filteredJobs.filter(j => j.payment_status !== 'paid');
+    const unpaidJobs = filteredJobs.filter(j => j.payment_status !== 'paid' && j.status !== 'cancelled' && j.payment_status !== 'cancelled');
     const totalPaid = paidJobs.reduce((sum, j) => sum + Number(j.total_amount || 0), 0);
     const totalOutstanding = unpaidJobs.reduce((sum, j) => sum + Number(j.total_amount || 0), 0);
 
@@ -329,8 +329,8 @@ export default function AccountingPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <span className={`badge ${job.payment_status === 'paid' ? 'badge-completed' : 'badge-pending'}`}>
-                                            {job.payment_status}
+                                        <span className={`badge ${job.payment_status === 'paid' ? 'badge-completed' : (job.payment_status === 'cancelled' || job.status === 'cancelled') ? 'badge-error' : 'badge-pending'}`}>
+                                            {(job.payment_status || 'pending').replace('_', ' ')}
                                         </span>
                                     </td>
                                     <td style={{ textAlign: 'right', fontWeight: 600 }}>

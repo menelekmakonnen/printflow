@@ -21,7 +21,8 @@ const STATUS_CONFIG = {
     approved_for_print: { label: 'Approved for Print', badge: 'badge-approved', color: '#3b82f6' },
     design_rejected: { label: 'Design Rejected', badge: 'badge-error', color: '#ef4444' },
     finishing: { label: 'Finishing', badge: 'badge-finishing', color: 'var(--color-finishing)' },
-    completed: { label: 'Completed', badge: 'badge-completed', color: 'var(--color-completed)' }
+    completed: { label: 'Completed', badge: 'badge-completed', color: 'var(--color-completed)' },
+    cancelled: { label: 'Cancelled', badge: 'badge-error', color: 'var(--color-error)' }
 };
 
 const TIMELINE_STEPS = [
@@ -180,14 +181,14 @@ export default function JobDetailPage() {
                 discount: 0,
                 discountType: 'cedi',
                 cost: Number(i.cost || 0),
-                costType: 'cedi',
-                design_service: false, // Defaulting off for duplication safety
-                design_id: null,
-                design_cost: 0,
-                design_costType: 'cedi',
-                design_discount: 0,
-                design_discountType: 'cedi',
-                design_notes: '',
+                costType: i.costType || 'cedi',
+                design_service: !!i.design_service,
+                design_id: i.design_id || null,
+                design_cost: Number(i.design_cost || 0),
+                design_costType: i.design_costType || 'cedi',
+                design_discount: Number(i.design_discount || 0),
+                design_discountType: i.design_discountType || 'cedi',
+                design_notes: i.design_notes || '',
                 unit: i.unit || 'pcs'
             }))
         };
@@ -389,9 +390,13 @@ export default function JobDetailPage() {
                     <div className="detail-item">
                         <div className="detail-item-label">Payment Status</div>
                         <div className="detail-item-value" style={{
-                            color: job.payment_status === 'paid' ? 'var(--color-completed)' : 'var(--color-pending)'
+                            color: job.payment_status === 'paid'
+                                ? 'var(--color-completed)'
+                                : (job.payment_status === 'cancelled' || job.status === 'cancelled')
+                                    ? 'var(--color-error)'
+                                    : 'var(--color-pending)'
                         }}>
-                            {job.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                            {job.payment_status === 'paid' ? 'Paid' : (job.payment_status === 'cancelled' || job.status === 'cancelled') ? 'Cancelled' : 'Pending'}
                         </div>
                     </div>
                 )}
@@ -494,7 +499,7 @@ export default function JobDetailPage() {
                             <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Job Type:</td><td style={{ padding: '8px 0', textTransform: 'capitalize' }}>{(job.job_type || '').replace(/_/g, ' ')}</td></tr>
                             {job.job_description && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Description:</td><td style={{ padding: '8px 0' }}>{job.job_description}</td></tr>}
                             {job.total_amount !== undefined && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Total:</td><td style={{ padding: '8px 0', fontSize: '1.125rem', fontWeight: 700 }}>{'\u20B5'}{Number(job.total_amount).toFixed(2)}</td></tr>}
-                            {job.payment_status && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Payment:</td><td style={{ padding: '8px 0' }}>{job.payment_status === 'paid' ? 'Paid' : 'Pending'}</td></tr>}
+                            {job.payment_status && <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Payment:</td><td style={{ padding: '8px 0' }}>{job.payment_status === 'paid' ? 'Paid' : (job.payment_status === 'cancelled' || job.status === 'cancelled') ? 'Cancelled' : 'Pending'}</td></tr>}
                             <tr><td style={{ padding: '8px 0', fontWeight: 600 }}>Status:</td><td style={{ padding: '8px 0' }}>{cfg.label}</td></tr>
                         </tbody>
                     </table>

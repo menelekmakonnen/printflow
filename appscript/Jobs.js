@@ -281,6 +281,7 @@ function handleCancelJob(payload) {
 
     updateRow(SHEET_JOBS, job._rowIndex, {
         status: 'cancelled',
+        payment_status: 'cancelled',
         updated_by: auth.user.username
     });
 
